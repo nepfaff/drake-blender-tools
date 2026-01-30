@@ -16,7 +16,7 @@ from .material_builder import (
     create_default_material,
     create_material,
 )
-from .mesh_builder import create_mesh_object
+from .mesh_builder import create_mesh_object, create_mesh_file_object
 from ..parser import parse_html_recording
 from ..scene import SceneGraph, SceneNode
 
@@ -61,15 +61,18 @@ def build_scene(
 
     # Create objects for each node with geometry (filtering excluded paths)
     created_objects: dict[str, bpy.types.Object] = {}
+    import_matrices: dict[str, "mathutils.Matrix"] = {}  # glTF coordinate conversion
 
     for node in scene_graph.get_mesh_nodes():
         # Skip excluded paths (contact forces, proximity/collision geometry)
         if _should_skip_path(node.path):
             continue
 
-        obj = _create_object_from_node(node, scene_graph)
+        obj, import_matrix = _create_object_from_node(node, scene_graph)
         if obj is not None:
             created_objects[node.path] = obj
+            if import_matrix is not None:
+                import_matrices[node.path] = import_matrix
             _link_object_to_scene(obj)
 
     # Apply animations - check both direct animations and parent animations
@@ -88,6 +91,7 @@ def build_scene(
                 target_fps=target_fps,
                 start_frame=start_frame,
                 local_offset=local_offset,
+                import_matrix=import_matrices.get(path),
             )
 
     # Set scene frame range based on all animated nodes in illustration paths
@@ -239,6 +243,10 @@ def _get_local_offset_from_ancestor(
     # Collect transforms from nodes between anim_node and obj_node (exclusive of anim, inclusive of obj)
     combined = Transform.identity()
     current = obj_node
+
+    # Include the object's own local matrix first (innermost transform)
+    combined = combine_transforms(obj_node.object_matrix, combined)
+
     while current is not None and current.path != anim_node.path:
         combined = combine_transforms(current.transform, combined)
         current = current.parent
@@ -279,7 +287,7 @@ def _clear_scene() -> None:
 def _create_object_from_node(
     node: SceneNode,
     scene_graph: SceneGraph | None = None,
-) -> bpy.types.Object | None:
+) -> tuple[bpy.types.Object, "mathutils.Matrix | None"] | tuple[None, None]:
     """Create a Blender object from a scene node.
 
     Args:
@@ -287,7 +295,8 @@ def _create_object_from_node(
         scene_graph: Optional scene graph for deriving better names
 
     Returns:
-        Blender object or None
+        Tuple of (Blender object, import_matrix). import_matrix is non-None for
+        glTF imports and captures the coordinate conversion rotation.
     """
     from ..scene.geometry import MeshFileGeometry
 
@@ -298,26 +307,32 @@ def _create_object_from_node(
 
     # Check if this is a mesh file (glTF/OBJ) - these are handled specially
     is_meshfile = isinstance(node.geometry, MeshFileGeometry)
+    is_gltf = is_meshfile and node.geometry.format.lower() in ("gltf", "glb")
 
-    # Create mesh object with the derived name
-    obj = create_mesh_object(node, name=obj_name)
+    import_matrix = None
+    if is_meshfile:
+        # Use create_mesh_file_object to get the import coordinate conversion matrix
+        obj, import_matrix = create_mesh_file_object(node, name=obj_name)
+    else:
+        obj = create_mesh_object(node, name=obj_name)
+
     if obj is None:
-        return None
+        return None, None
 
     # Apply world transform (combining all parent transforms)
-    # For glTF imports, Blender's importer already handles transforms internally,
-    # but we still need to apply the world transform for correct positioning
-    _apply_world_transform(obj, node)
+    _apply_world_transform(obj, node, import_matrix=import_matrix)
 
-    # Apply material only for non-meshfile geometry
-    # glTF/OBJ imports already have their own materials from the file
-    if not is_meshfile:
+    # Apply material for non-glTF geometry.
+    # glTF imports have their own embedded materials, but OBJ files may not
+    # (they depend on MTL files which may be missing). For OBJ meshfile geometry
+    # and non-meshfile geometry, apply materials from the scene graph.
+    if not is_gltf:
         if node.material is not None:
             mat_name = f"{node.name}_material"
             material = create_material(node.material, mat_name)
             apply_material_to_object(obj, material)
-        else:
-            # Apply default material
+        elif not is_meshfile:
+            # Apply default material only for non-meshfile geometry
             default_mat = create_default_material(f"{node.name}_default")
             apply_material_to_object(obj, default_mat)
 
@@ -325,32 +340,56 @@ def _create_object_from_node(
     obj.hide_viewport = not node.visible
     obj.hide_render = not node.visible
 
-    return obj
+    return obj, import_matrix
 
 
-def _apply_world_transform(obj: bpy.types.Object, node: SceneNode) -> None:
+def _apply_world_transform(
+    obj: bpy.types.Object,
+    node: SceneNode,
+    import_matrix: "mathutils.Matrix | None" = None,
+) -> None:
     """Apply world transform to Blender object.
 
     Computes the full world transform by combining all parent transforms.
+    For glTF imports, also incorporates the importer's coordinate conversion
+    matrix to preserve correct mesh orientation.
 
     Args:
         obj: Blender object
         node: SceneNode with transform
+        import_matrix: Optional coordinate conversion matrix from glTF importer.
+            When provided, the final world matrix is: meshcat_world × import_matrix
     """
+    import mathutils
+
     # Get world transform (combines all parent transforms)
     transform = node.get_world_transform()
 
-    # Set location
-    obj.location = transform.translation
+    if import_matrix is not None:
+        # For glTF: combine meshcat world transform with the importer's
+        # coordinate conversion. The import_matrix handles the conversion
+        # from glTF model space to Blender's coordinate system (e.g., Y-up
+        # to Z-up). The meshcat transform positions the object in the scene.
+        # Build meshcat world matrix
+        x, y, z, w = transform.rotation
+        quat = mathutils.Quaternion((w, x, y, z))
+        meshcat_matrix = mathutils.Matrix.LocRotScale(
+            mathutils.Vector(transform.translation),
+            quat,
+            mathutils.Vector(transform.scale),
+        )
+        # Combine: meshcat positioning × import coordinate conversion
+        obj.matrix_world = meshcat_matrix @ import_matrix
+    else:
+        # Standard path: set location, rotation, scale directly
+        obj.location = transform.translation
 
-    # Set rotation (quaternion)
-    obj.rotation_mode = "QUATERNION"
-    # Convert from (x, y, z, w) to Blender's (w, x, y, z)
-    x, y, z, w = transform.rotation
-    obj.rotation_quaternion = (w, x, y, z)
+        obj.rotation_mode = "QUATERNION"
+        # Convert from (x, y, z, w) to Blender's (w, x, y, z)
+        x, y, z, w = transform.rotation
+        obj.rotation_quaternion = (w, x, y, z)
 
-    # Set scale
-    obj.scale = transform.scale
+        obj.scale = transform.scale
 
 
 def _apply_transform(obj: bpy.types.Object, node: SceneNode) -> None:

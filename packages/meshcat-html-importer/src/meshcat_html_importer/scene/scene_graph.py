@@ -51,8 +51,20 @@ class SceneNode:
     # Object type hints
     object_type: str = "Object3D"  # Mesh, Line, Points, etc.
 
+    # The object's local matrix from set_object (separate from the group transform).
+    # In meshcat's Three.js, the group receives set_transform while the object inside
+    # has its own local matrix (e.g., containing mm-to-m scale conversion).
+    object_matrix: Transform = field(default_factory=Transform.identity)
+
     def get_world_transform(self) -> Transform:
         """Get the world transform by combining all parent transforms.
+
+        The world transform is computed as:
+            parent_chain × node.transform × node.object_matrix
+
+        This mirrors meshcat's Three.js structure where each path node has a group
+        transform (set by set_transform) and the object inside has its own local
+        matrix (set by set_object).
 
         Returns:
             Transform in world space
@@ -68,11 +80,14 @@ class SceneNode:
         transforms.reverse()
 
         if not transforms:
-            return Transform.identity()
+            world_transform = Transform.identity()
+        else:
+            world_transform = transforms[0]
+            for t in transforms[1:]:
+                world_transform = combine_transforms(world_transform, t)
 
-        world_transform = transforms[0]
-        for t in transforms[1:]:
-            world_transform = combine_transforms(world_transform, t)
+        # Apply the object's own local matrix (e.g., scale from mesh format)
+        world_transform = combine_transforms(world_transform, self.object_matrix)
 
         return world_transform
 
@@ -157,13 +172,14 @@ class SceneGraph:
         node = self._get_or_create_node(path)
         node.object_type = inner_obj.get("type", "Object3D")
 
-        # Extract object-level matrix if present (contains local scale/transform)
+        # Extract object-level matrix if present (contains local scale/transform).
+        # This is stored separately from the group transform (set by set_transform)
+        # to mirror meshcat's Three.js structure where the object has its own local
+        # matrix (e.g., mm-to-m scale for glTF imports).
         obj_matrix = inner_obj.get("matrix")
         if obj_matrix:
-            # Parse the 4x4 matrix and apply to node transform
-            obj_transform = matrix_to_trs(np.array(obj_matrix).reshape(4, 4))
-            # Combine with existing transform (object matrix is the inner transform)
-            node.transform = combine_transforms(node.transform, obj_transform)
+            obj_transform = parse_transform_matrix(obj_matrix)
+            node.object_matrix = matrix_to_trs(obj_transform)
 
         # Handle _meshfile_object type (custom meshcat format)
         if inner_obj.get("type") == "_meshfile_object":
@@ -204,10 +220,9 @@ class SceneGraph:
     def _handle_set_transform(self, cmd: Command) -> None:
         """Handle set_transform command.
 
-        Note: set_transform only updates pose (translation/rotation), not scale.
-        The scale from set_object's object matrix is preserved. This is because
-        meshcat sends identity transforms for visual nodes after set_object,
-        and the actual geometry scale is in the object matrix, not the transform.
+        Sets the group transform for the node. The object's own local matrix
+        (from set_object) is stored separately in object_matrix and is not
+        affected by set_transform.
         """
         path = cmd.path
         data = cmd.data
@@ -220,23 +235,7 @@ class SceneGraph:
 
         try:
             matrix = parse_transform_matrix(matrix_data)
-            new_transform = matrix_to_trs(matrix)
-
-            # Preserve existing scale from object matrix if new transform has
-            # identity scale. The object matrix contains the geometry scale.
-            existing_scale = node.transform.scale
-            if existing_scale != (1.0, 1.0, 1.0) and new_transform.scale == (
-                1.0,
-                1.0,
-                1.0,
-            ):
-                node.transform = Transform(
-                    translation=new_transform.translation,
-                    rotation=new_transform.rotation,
-                    scale=existing_scale,
-                )
-            else:
-                node.transform = new_transform
+            node.transform = matrix_to_trs(matrix)
         except Exception as e:
             print(f"Warning: Failed to parse transform for {path}: {e}")
 

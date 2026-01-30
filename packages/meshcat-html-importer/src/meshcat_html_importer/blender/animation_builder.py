@@ -28,6 +28,7 @@ def apply_animation(
     start_frame: int = 0,
     local_offset: tuple[tuple[float, float, float], tuple[float, float, float, float]]
     | None = None,
+    import_matrix: "mathutils.Matrix | None" = None,
 ) -> None:
     """Apply animation keyframes to a Blender object.
 
@@ -41,6 +42,9 @@ def apply_animation(
         start_frame: Starting frame number
         local_offset: Optional (position, rotation) offset to apply when animation
                      is inherited from a parent node
+        import_matrix: Optional coordinate conversion matrix from glTF importer.
+                      When provided, each keyframe transform is combined with this
+                      matrix to preserve correct mesh orientation.
     """
     if not node.keyframes:
         return
@@ -61,6 +65,12 @@ def apply_animation(
     if local_offset is not None:
         blender_keyframes = _apply_local_offset_to_keyframes(
             blender_keyframes, local_offset
+        )
+
+    # Apply import matrix for glTF objects (coordinate system conversion)
+    if import_matrix is not None:
+        blender_keyframes = _apply_import_matrix_to_keyframes(
+            blender_keyframes, import_matrix
         )
 
     # Create or get animation data
@@ -152,6 +162,62 @@ def _apply_local_offset_to_keyframes(
                 location=combined.translation,
                 rotation_quaternion=new_rot,
                 scale=combined.scale if kf.scale else None,
+            )
+        )
+
+    return result
+
+
+def _apply_import_matrix_to_keyframes(
+    keyframes: list[BlenderKeyframe],
+    import_matrix: "mathutils.Matrix",
+) -> list[BlenderKeyframe]:
+    """Apply glTF import coordinate conversion to keyframes.
+
+    For glTF objects, the importer applies a coordinate conversion rotation
+    (e.g., Y-up to Z-up). When animating, each keyframe's meshcat transform
+    must be combined with this import matrix to preserve correct orientation.
+
+    The final transform is: meshcat_keyframe_matrix @ import_matrix
+
+    Args:
+        keyframes: List of BlenderKeyframe (already in Blender convention)
+        import_matrix: Coordinate conversion matrix from glTF importer
+
+    Returns:
+        New list of keyframes with import matrix applied
+    """
+    import mathutils
+
+    result = []
+    for kf in keyframes:
+        loc = kf.location or (0.0, 0.0, 0.0)
+        scale = kf.scale or (1.0, 1.0, 1.0)
+
+        if kf.rotation_quaternion:
+            quat = mathutils.Quaternion(kf.rotation_quaternion)
+        else:
+            quat = mathutils.Quaternion()  # identity
+
+        # Build meshcat keyframe matrix
+        meshcat_matrix = mathutils.Matrix.LocRotScale(
+            mathutils.Vector(loc),
+            quat,
+            mathutils.Vector(scale),
+        )
+
+        # Combine: meshcat positioning × import coordinate conversion
+        combined = meshcat_matrix @ import_matrix
+
+        # Decompose back to loc, rot, scale
+        new_loc, new_rot, new_scale = combined.decompose()
+
+        result.append(
+            BlenderKeyframe(
+                frame=kf.frame,
+                location=tuple(new_loc),
+                rotation_quaternion=(new_rot.w, new_rot.x, new_rot.y, new_rot.z),
+                scale=tuple(new_scale) if kf.scale else None,
             )
         )
 

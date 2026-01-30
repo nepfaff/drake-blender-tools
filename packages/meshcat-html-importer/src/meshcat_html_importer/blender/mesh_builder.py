@@ -44,9 +44,34 @@ def create_mesh_object(
     elif isinstance(node.geometry, PrimitiveGeometry):
         return _create_from_primitive(node.geometry, obj_name)
     elif isinstance(node.geometry, MeshFileGeometry):
-        return _create_from_mesh_file(node.geometry, obj_name)
+        result = _create_from_mesh_file(node.geometry, obj_name)
+        # _create_from_mesh_file returns (obj, import_matrix) tuple
+        return result[0] if result[0] is not None else None
 
     return None
+
+
+def create_mesh_file_object(
+    node: SceneNode,
+    name: str | None = None,
+) -> tuple[bpy.types.Object, "mathutils.Matrix | None"] | tuple[None, None]:
+    """Create a Blender mesh object from a MeshFileGeometry node.
+
+    Like create_mesh_object, but also returns the import coordinate conversion
+    matrix (for glTF imports) needed to correctly apply the meshcat world transform.
+
+    Args:
+        node: SceneNode with MeshFileGeometry
+        name: Optional name override
+
+    Returns:
+        Tuple of (object, import_matrix). import_matrix is non-None for glTF.
+    """
+    if node.geometry is None or not isinstance(node.geometry, MeshFileGeometry):
+        return None, None
+
+    obj_name = name or node.name
+    return _create_from_mesh_file(node.geometry, obj_name)
 
 
 def _create_from_mesh_geometry(
@@ -218,8 +243,14 @@ def _create_cylinder_mesh(
     height: float,
     radial_segments: int,
 ) -> None:
-    """Create a cylinder mesh."""
+    """Create a cylinder mesh.
+
+    Three.js CylinderGeometry extends along the Y-axis, but Blender's
+    create_cone extends along Z. We rotate the mesh by -90° around X
+    to match Three.js convention, so that meshcat quaternions work correctly.
+    """
     import bmesh
+    import mathutils
 
     bm = bmesh.new()
 
@@ -233,6 +264,12 @@ def _create_cylinder_mesh(
         radius2=radius_top,
         depth=height,
     )
+
+    # Rotate -90° around X to convert from Blender Z-up to Three.js Y-up.
+    # This makes the cylinder extend along Y in local space, matching Three.js.
+    import math
+    rot_matrix = mathutils.Matrix.Rotation(-math.pi / 2, 4, "X")
+    bmesh.ops.transform(bm, matrix=rot_matrix, verts=bm.verts[:])
 
     bm.to_mesh(mesh)
     bm.free()
@@ -263,8 +300,16 @@ def _create_plane_mesh(
 def _create_from_mesh_file(
     geom: MeshFileGeometry,
     name: str,
-) -> bpy.types.Object | None:
-    """Create mesh by importing embedded mesh file."""
+) -> tuple[bpy.types.Object, "mathutils.Matrix"] | tuple[None, None]:
+    """Create mesh by importing embedded mesh file.
+
+    Returns:
+        Tuple of (object, import_matrix) where import_matrix is the coordinate
+        system conversion matrix from the importer (e.g., glTF Y-up to Z-up).
+        For OBJ imports, import_matrix is None. Returns (None, None) on failure.
+    """
+    import mathutils
+
     # Write mesh data to temp file
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -287,9 +332,15 @@ def _create_from_mesh_file(
             new_objects = list(set(bpy.data.objects) - old_objects)
 
             if new_objects:
+                # Capture the import's coordinate conversion matrix before cleanup.
+                # The glTF importer applies a rotation to convert from glTF's
+                # coordinate system to Blender's. We need to preserve this when
+                # applying the meshcat world transform later.
+                import_matrix = _get_import_rotation_matrix(new_objects)
+
                 # Find the main mesh object and clean up extras
                 main_obj = _select_main_object_and_cleanup(new_objects, name)
-                return main_obj
+                return main_obj, import_matrix
 
         elif geom.format.lower() == "obj":
             mesh_file = temp_path / f"{name}.obj"
@@ -309,9 +360,40 @@ def _create_from_mesh_file(
             if new_objects:
                 # Find the main mesh object and clean up extras
                 main_obj = _select_main_object_and_cleanup(new_objects, name)
-                return main_obj
+                return main_obj, None
 
-    return None
+    return None, None
+
+
+def _get_import_rotation_matrix(
+    objects: list[bpy.types.Object],
+) -> "mathutils.Matrix":
+    """Extract the coordinate conversion rotation from imported objects.
+
+    The glTF importer applies a rotation to convert from glTF/Three.js coordinate
+    system to Blender's. This captures that rotation so it can be combined with
+    the meshcat world transform.
+
+    Args:
+        objects: List of newly imported objects
+
+    Returns:
+        The import rotation as a 4x4 matrix (translation zeroed, pure rotation)
+    """
+    import mathutils
+
+    # Find a root object (no parent) - the importer's coordinate conversion
+    # is typically on the root object or the first mesh
+    for obj in objects:
+        if obj.parent is None:
+            mat = obj.matrix_world.copy()
+            # Zero out translation - we only want the rotation component
+            mat[0][3] = 0.0
+            mat[1][3] = 0.0
+            mat[2][3] = 0.0
+            return mat
+
+    return mathutils.Matrix.Identity(4)
 
 
 def _select_main_object_and_cleanup(

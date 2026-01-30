@@ -273,7 +273,10 @@ def _parse_meshfile_geometry(
     # Convert data to bytes if it's a string
     if isinstance(data, str):
         try:
-            data = base64.b64decode(data)
+            # Use validate=True to reject non-base64 data (e.g., OBJ text).
+            # Without validation, b64decode silently strips non-base64 chars
+            # and can produce garbled output from plain text input.
+            data = base64.b64decode(data, validate=True)
         except Exception:
             data = data.encode("utf-8")
     elif isinstance(data, (list, np.ndarray)):
@@ -284,7 +287,7 @@ def _parse_meshfile_geometry(
     for key, value in resources_data.items():
         if isinstance(value, str):
             try:
-                resources[key] = base64.b64decode(value)
+                resources[key] = base64.b64decode(value, validate=True)
             except Exception:
                 resources[key] = value.encode("utf-8")
         elif isinstance(value, (list, np.ndarray)):
