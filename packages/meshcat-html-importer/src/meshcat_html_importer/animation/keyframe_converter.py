@@ -64,8 +64,9 @@ def downsample_keyframes(
 ) -> list[AnimationKeyframe]:
     """Downsample keyframes from recording FPS to target FPS.
 
-    Selects keyframes at regular intervals to match target FPS,
-    using nearest-neighbor sampling.
+    Uses linear interpolation between keyframes to match Three.js behavior.
+    Position and scale are linearly interpolated; rotation uses normalized
+    linear interpolation (nlerp).
 
     Args:
         keyframes: Original keyframes at recording_fps
@@ -84,39 +85,121 @@ def downsample_keyframes(
     if len(sorted_kfs) < 2:
         return sorted_kfs
 
-    # Get time range
-    min_time = sorted_kfs[0].time
+    # Use absolute time (from 0) so all nodes share the same time base.
+    # This prevents time-shifting when a node's keyframes start later than t=0.
+    min_time = 0.0
     max_time = sorted_kfs[-1].time
-    duration_seconds = (max_time - min_time) / recording_fps
+    duration_seconds = max_time / recording_fps
 
     # Calculate target frame count
     target_frame_count = int(duration_seconds * target_fps) + 1
 
-    # Sample at regular intervals
-    result = []
-    time_by_kf = {kf.time: kf for kf in sorted_kfs}
-    all_times = sorted(time_by_kf.keys())
+    # Build list of times for binary search
+    all_times = [kf.time for kf in sorted_kfs]
 
+    from meshcat_html_importer.scene.scene_graph import AnimationKeyframe
+    import bisect
+
+    result = []
     for target_frame in range(target_frame_count):
         target_time_seconds = target_frame / target_fps
         target_recording_time = min_time + target_time_seconds * recording_fps
 
-        # Find nearest keyframe
-        nearest_time = min(all_times, key=lambda t: abs(t - target_recording_time))
-        nearest_kf = time_by_kf[nearest_time]
+        # Find bracketing keyframes using binary search
+        idx = bisect.bisect_right(all_times, target_recording_time)
 
-        # Create new keyframe with adjusted time (as target frame number)
-        from meshcat_html_importer.scene.scene_graph import AnimationKeyframe
+        if idx == 0:
+            # Before first keyframe - use first
+            kf = sorted_kfs[0]
+            result.append(AnimationKeyframe(
+                time=float(target_frame),
+                position=kf.position,
+                rotation=kf.rotation,
+                scale=kf.scale,
+            ))
+        elif idx >= len(sorted_kfs):
+            # After last keyframe - use last
+            kf = sorted_kfs[-1]
+            result.append(AnimationKeyframe(
+                time=float(target_frame),
+                position=kf.position,
+                rotation=kf.rotation,
+                scale=kf.scale,
+            ))
+        else:
+            # Interpolate between kf_a and kf_b
+            kf_a = sorted_kfs[idx - 1]
+            kf_b = sorted_kfs[idx]
+            dt = kf_b.time - kf_a.time
+            t = (target_recording_time - kf_a.time) / dt if dt > 0 else 0.0
 
-        new_kf = AnimationKeyframe(
-            time=float(target_frame),  # Now in target frames
-            position=nearest_kf.position,
-            rotation=nearest_kf.rotation,
-            scale=nearest_kf.scale,
-        )
-        result.append(new_kf)
+            pos = _lerp_tuple3(kf_a.position, kf_b.position, t)
+            rot = _nlerp_quat(kf_a.rotation, kf_b.rotation, t)
+            sc = _lerp_tuple3(kf_a.scale, kf_b.scale, t)
+
+            result.append(AnimationKeyframe(
+                time=float(target_frame),
+                position=pos,
+                rotation=rot,
+                scale=sc,
+            ))
 
     return result
+
+
+def _lerp_tuple3(
+    a: tuple[float, float, float] | None,
+    b: tuple[float, float, float] | None,
+    t: float,
+) -> tuple[float, float, float] | None:
+    """Linearly interpolate between two 3-tuples."""
+    if a is None and b is None:
+        return None
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return (
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    )
+
+
+def _nlerp_quat(
+    a: tuple[float, float, float, float] | None,
+    b: tuple[float, float, float, float] | None,
+    t: float,
+) -> tuple[float, float, float, float] | None:
+    """Normalized linear interpolation for quaternions (x,y,z,w)."""
+    if a is None and b is None:
+        return None
+    if a is None:
+        return b
+    if b is None:
+        return a
+    import math
+
+    # Ensure shortest path (flip b if dot product is negative)
+    dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
+    if dot < 0:
+        b = (-b[0], -b[1], -b[2], -b[3])
+
+    # Lerp
+    x = a[0] + (b[0] - a[0]) * t
+    y = a[1] + (b[1] - a[1]) * t
+    z = a[2] + (b[2] - a[2]) * t
+    w = a[3] + (b[3] - a[3]) * t
+
+    # Normalize
+    length = math.sqrt(x * x + y * y + z * z + w * w)
+    if length > 0:
+        x /= length
+        y /= length
+        z /= length
+        w /= length
+
+    return (x, y, z, w)
 
 
 def convert_keyframes_to_blender(
