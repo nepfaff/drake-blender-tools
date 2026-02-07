@@ -29,7 +29,10 @@ def main() -> int:
         "--recording-fps",
         type=float,
         default=None,
-        help="FPS of the original recording (default: auto-detect from file, fallback 64)",
+        help=(
+            "FPS of the original recording "
+            "(default: auto-detect from file, fallback 64)"
+        ),
     )
     parser.add_argument(
         "--target-fps",

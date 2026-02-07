@@ -24,7 +24,10 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
 
     recording_fps: FloatProperty(
         name="Recording FPS",
-        description="FPS of the original recording (0 = auto-detect from file, Drake default: 64)",
+        description=(
+            "FPS of the original recording "
+            "(0 = auto-detect from file, Drake default: 64)"
+        ),
         default=0.0,
         min=0.0,
         max=10000.0,
@@ -51,6 +54,20 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
         default=True,
     )
 
+    hierarchical_collections: BoolProperty(
+        name="Hierarchical Collections",
+        description="Create nested collections mirroring meshcat path structure",
+        default=True,
+    )
+
+    collection_root: StringProperty(
+        name="Collection Root",
+        description=(
+            "Custom prefix to strip from paths (leave empty for auto-detection)"
+        ),
+        default="",
+    )
+
     def execute(self, context):
         try:
             recording_fps = self.recording_fps if self.recording_fps > 0 else None
@@ -61,6 +78,8 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
                 target_fps=self.target_fps,
                 start_frame=self.start_frame,
                 clear_scene=self.clear_scene,
+                hierarchical_collections=self.hierarchical_collections,
+                collection_root=self.collection_root,
             )
 
             animation_count = sum(

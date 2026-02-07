@@ -17,6 +17,8 @@ from meshcat_html_importer.animation.keyframe_converter import (
 )
 
 if TYPE_CHECKING:
+    import mathutils
+
     from meshcat_html_importer.scene.scene_graph import SceneNode
 
 
@@ -116,12 +118,12 @@ def _apply_local_offset_to_keyframes(
     Returns:
         New list of keyframes with offset applied
     """
+    from meshcat_html_importer.animation.keyframe_converter import (
+        convert_quaternion_to_blender,
+    )
     from meshcat_html_importer.scene.transforms import (
         Transform,
         combine_transforms,
-    )
-    from meshcat_html_importer.animation.keyframe_converter import (
-        convert_quaternion_to_blender,
     )
 
     pos_offset, rot_offset = local_offset
@@ -134,7 +136,8 @@ def _apply_local_offset_to_keyframes(
     result = []
     for kf in keyframes:
         # Build parent transform from keyframe
-        # Note: Blender keyframes have rotation in (w,x,y,z), need to convert to (x,y,z,w)
+        # Note: Blender keyframes have rotation in (w,x,y,z),
+        # need to convert to (x,y,z,w)
         parent_pos = kf.location or (0.0, 0.0, 0.0)
         if kf.rotation_quaternion:
             # Blender format is (w,x,y,z), convert to internal (x,y,z,w)

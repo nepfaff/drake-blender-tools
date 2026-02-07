@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import bpy
+
+if TYPE_CHECKING:
+    import mathutils
 
 from .animation_builder import (
     apply_animation,
@@ -16,10 +19,12 @@ from .material_builder import (
     create_default_material,
     create_material,
 )
-from .mesh_builder import create_mesh_object, create_mesh_file_object
+from .mesh_builder import (
+    create_mesh_file_object,
+    create_mesh_object,
+)
 from ..parser import parse_html_recording
 from ..scene import SceneGraph, SceneNode
-
 
 # Path prefixes to exclude (contact forces, collision geometry, inertia visualizers)
 EXCLUDED_PATH_PREFIXES = (
@@ -43,7 +48,8 @@ def build_scene(
 
     Args:
         scene_data: Parsed data from parse_html_recording()
-        recording_fps: FPS of the original recording (default 1000 for Drake simulations)
+        recording_fps: FPS of the original recording
+                      (default 1000 for Drake simulations)
         target_fps: Target FPS for Blender animation (default 30)
         start_frame: Starting frame number
         clear_scene: Whether to clear existing objects
@@ -229,7 +235,7 @@ def _get_local_offset_from_ancestor(
     # This is: obj_world = anim_world * local_offset
     # So: local_offset = inverse(anim_world) * obj_world
     # For simplicity, we collect transforms from anim_node to obj_node
-    from ..scene.transforms import combine_transforms, Transform
+    from ..scene.transforms import Transform, combine_transforms
 
     # Start from animation node, walk down to object node
     # Collect all transforms between them
@@ -240,7 +246,8 @@ def _get_local_offset_from_ancestor(
     if len(obj_path_parts) <= len(anim_path_parts):
         return None
 
-    # Collect transforms from nodes between anim_node and obj_node (exclusive of anim, inclusive of obj)
+    # Collect transforms from nodes between anim_node and obj_node
+    # (exclusive of anim, inclusive of obj)
     combined = Transform.identity()
     current = obj_node
 
