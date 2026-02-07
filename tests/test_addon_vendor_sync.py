@@ -18,7 +18,10 @@ from pathlib import Path
 import bpy
 
 # Test HTML file
-TEST_HTML = "/home/ubuntu/efs/nicholas/scene-agent-eval-scenes/robot_task/v2/room/scene_000/simulation_good.html"
+TEST_HTML = (
+    "/home/ubuntu/efs/nicholas/scene-agent-eval-scenes/"
+    "robot_task/v2/room/scene_000/simulation_good.html"
+)
 OUTPUT_CLI = "/tmp/test_parity_cli.blend"
 OUTPUT_ADDON = "/tmp/test_parity_addon.blend"
 
@@ -76,7 +79,9 @@ def extract_scene_data():
                                     )
                         elif hasattr(strip, "fcurves"):
                             for fcurve in strip.fcurves:
-                                obj_data["keyframe_count"] += len(fcurve.keyframe_points)
+                                obj_data["keyframe_count"] += len(
+                                    fcurve.keyframe_points
+                                )
             except (AttributeError, TypeError):
                 # Fallback for older Blender versions
                 if hasattr(action, "fcurves"):
@@ -123,7 +128,8 @@ def compare_scenes(cli_data, addon_data):
 
     if cli_data["frame_range"] != addon_data["frame_range"]:
         errors.append(
-            f"Frame range mismatch: CLI={cli_data['frame_range']}, Addon={addon_data['frame_range']}"
+            f"Frame range mismatch: "
+            f"CLI={cli_data['frame_range']}, Addon={addon_data['frame_range']}"
         )
 
     if cli_data["fps"] != addon_data["fps"]:
@@ -155,12 +161,14 @@ def compare_scenes(cli_data, addon_data):
 
         if not compare_tuples(cli_obj["location"], addon_obj["location"]):
             transform_mismatches.append(
-                f"{name}: location CLI={cli_obj['location']} vs Addon={addon_obj['location']}"
+                f"{name}: location "
+                f"CLI={cli_obj['location']} vs Addon={addon_obj['location']}"
             )
 
         if not compare_quaternions(cli_obj["rotation"], addon_obj["rotation"]):
             transform_mismatches.append(
-                f"{name}: rotation CLI={cli_obj['rotation']} vs Addon={addon_obj['rotation']}"
+                f"{name}: rotation "
+                f"CLI={cli_obj['rotation']} vs Addon={addon_obj['rotation']}"
             )
 
         if not compare_tuples(cli_obj["scale"], addon_obj["scale"]):
@@ -170,7 +178,9 @@ def compare_scenes(cli_data, addon_data):
 
         if cli_obj["has_animation"] != addon_obj["has_animation"]:
             animation_mismatches.append(
-                f"{name}: animation CLI={cli_obj['has_animation']} vs Addon={addon_obj['has_animation']}"
+                f"{name}: animation "
+                f"CLI={cli_obj['has_animation']} vs "
+                f"Addon={addon_obj['has_animation']}"
             )
         elif cli_obj["has_animation"]:
             cli_kf = cli_obj["keyframe_count"]
@@ -225,14 +235,14 @@ def run_test():
     clear_scene()
 
     # Clear cached imports to force reload from addon path
-    modules_to_remove = [k for k in sys.modules if k.startswith("meshcat_html_importer")]
+    modules_to_remove = [
+        k for k in sys.modules if k.startswith("meshcat_html_importer")
+    ]
     for mod in modules_to_remove:
         del sys.modules[mod]
 
     # Add addon path (the extension root acts as the package)
-    addon_path = (
-        Path(__file__).parent.parent / "blender_addons"
-    )
+    addon_path = Path(__file__).parent.parent / "blender_addons"
     sys.path.insert(0, str(addon_path))
 
     from meshcat_html_importer.blender_impl.scene_builder import (

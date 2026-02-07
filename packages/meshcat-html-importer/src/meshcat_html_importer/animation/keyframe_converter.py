@@ -97,8 +97,9 @@ def downsample_keyframes(
     # Build list of times for binary search
     all_times = [kf.time for kf in sorted_kfs]
 
-    from meshcat_html_importer.scene.scene_graph import AnimationKeyframe
     import bisect
+
+    from meshcat_html_importer.scene.scene_graph import AnimationKeyframe
 
     result = []
     for target_frame in range(target_frame_count):
@@ -111,21 +112,25 @@ def downsample_keyframes(
         if idx == 0:
             # Before first keyframe - use first
             kf = sorted_kfs[0]
-            result.append(AnimationKeyframe(
-                time=float(target_frame),
-                position=kf.position,
-                rotation=kf.rotation,
-                scale=kf.scale,
-            ))
+            result.append(
+                AnimationKeyframe(
+                    time=float(target_frame),
+                    position=kf.position,
+                    rotation=kf.rotation,
+                    scale=kf.scale,
+                )
+            )
         elif idx >= len(sorted_kfs):
             # After last keyframe - use last
             kf = sorted_kfs[-1]
-            result.append(AnimationKeyframe(
-                time=float(target_frame),
-                position=kf.position,
-                rotation=kf.rotation,
-                scale=kf.scale,
-            ))
+            result.append(
+                AnimationKeyframe(
+                    time=float(target_frame),
+                    position=kf.position,
+                    rotation=kf.rotation,
+                    scale=kf.scale,
+                )
+            )
         else:
             # Interpolate between kf_a and kf_b
             kf_a = sorted_kfs[idx - 1]
@@ -137,12 +142,14 @@ def downsample_keyframes(
             rot = _nlerp_quat(kf_a.rotation, kf_b.rotation, t)
             sc = _lerp_tuple3(kf_a.scale, kf_b.scale, t)
 
-            result.append(AnimationKeyframe(
-                time=float(target_frame),
-                position=pos,
-                rotation=rot,
-                scale=sc,
-            ))
+            result.append(
+                AnimationKeyframe(
+                    time=float(target_frame),
+                    position=pos,
+                    rotation=rot,
+                    scale=sc,
+                )
+            )
 
     return result
 
@@ -213,7 +220,8 @@ def convert_keyframes_to_blender(
 
     Args:
         keyframes: List of AnimationKeyframe from scene node
-        recording_fps: FPS of the original recording (default 1000 for Drake simulations)
+        recording_fps: FPS of the original recording
+                      (default 1000 for Drake simulations)
         target_fps: Target FPS for Blender animation
         start_frame: Starting frame number
         downsample: Whether to downsample to target FPS

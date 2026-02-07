@@ -24,7 +24,10 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
 
     recording_fps: FloatProperty(
         name="Recording FPS",
-        description="FPS of the original recording (0 = auto-detect from file, Drake default: 64)",
+        description=(
+            "FPS of the original recording "
+            "(0 = auto-detect from file, Drake default: 64)"
+        ),
         default=0.0,
         min=0.0,
         max=10000.0,
@@ -59,7 +62,9 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
 
     collection_root: StringProperty(
         name="Collection Root",
-        description="Custom prefix to strip from paths (leave empty for auto-detection)",
+        description=(
+            "Custom prefix to strip from paths (leave empty for auto-detection)"
+        ),
         default="",
     )
 

@@ -18,6 +18,8 @@ from meshcat_html_importer.scene.geometry import (
 )
 
 if TYPE_CHECKING:
+    import mathutils
+
     from meshcat_html_importer.scene.scene_graph import SceneNode
 
 
@@ -268,6 +270,7 @@ def _create_cylinder_mesh(
     # Rotate -90° around X to convert from Blender Z-up to Three.js Y-up.
     # This makes the cylinder extend along Y in local space, matching Three.js.
     import math
+
     rot_matrix = mathutils.Matrix.Rotation(-math.pi / 2, 4, "X")
     bmesh.ops.transform(bm, matrix=rot_matrix, verts=bm.verts[:])
 
@@ -308,7 +311,6 @@ def _create_from_mesh_file(
         system conversion matrix from the importer (e.g., glTF Y-up to Z-up).
         For OBJ imports, import_matrix is None. Returns (None, None) on failure.
     """
-    import mathutils
 
     # Write mesh data to temp file
     with tempfile.TemporaryDirectory() as temp_dir:
