@@ -3,23 +3,28 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from meshcat_html_importer.blender.animation_builder import (
+if TYPE_CHECKING:
+    import mathutils
+
+from ..parser import parse_html_recording
+from ..scene import SceneGraph, SceneNode
+from .animation_builder import (
     apply_animation,
     set_animation_range,
 )
-from meshcat_html_importer.blender.material_builder import (
+from .material_builder import (
     apply_material_to_object,
     create_default_material,
     create_material,
 )
-from meshcat_html_importer.blender.mesh_builder import create_mesh_object, create_mesh_file_object
-from meshcat_html_importer.parser import parse_html_recording
-from meshcat_html_importer.scene import SceneGraph, SceneNode
-
+from .mesh_builder import (
+    create_mesh_file_object,
+    create_mesh_object,
+)
 
 # Path prefixes to exclude (contact forces, collision geometry, inertia visualizers)
 EXCLUDED_PATH_PREFIXES = (
@@ -28,8 +33,14 @@ EXCLUDED_PATH_PREFIXES = (
     "/drake/inertia/",
 )
 
-# Path prefix for visual/illustration geometry (what we want to import)
+# Path prefix for visual/illustration geometry
 ILLUSTRATION_PREFIX = "/drake/illustration/"
+
+# Path prefix for trajectory/paths geometry
+PATHS_PREFIX = "/drake/paths/"
+
+# Default collection name for imported objects
+DEFAULT_COLLECTION_NAME = "MeshcatObjects"
 
 
 def build_scene(
@@ -38,15 +49,22 @@ def build_scene(
     target_fps: float = 30.0,
     start_frame: int = 0,
     clear_scene: bool = True,
+    hierarchical_collections: bool = False,
+    collection_root: str = "",
 ) -> dict[str, bpy.types.Object]:
     """Build a complete Blender scene from parsed meshcat data.
 
     Args:
         scene_data: Parsed data from parse_html_recording()
-        recording_fps: FPS of the original recording (default 1000 for Drake simulations)
+        recording_fps: FPS of the original recording
+                      (default 1000 for Drake simulations)
         target_fps: Target FPS for Blender animation (default 30)
         start_frame: Starting frame number
         clear_scene: Whether to clear existing objects
+        hierarchical_collections: If True, create nested collections
+                                 mirroring path structure
+        collection_root: Custom prefix to strip from paths
+                        (auto-detected if empty)
 
     Returns:
         Dictionary mapping node paths to created Blender objects
@@ -58,6 +76,9 @@ def build_scene(
     assets = scene_data.get("assets", {})
     scene_graph = SceneGraph(assets=assets)
     scene_graph.process_commands(scene_data["commands"])
+
+    # Get or create root collection for meshcat objects
+    root_collection = _get_or_create_root_collection()
 
     # Create objects for each node with geometry (filtering excluded paths)
     created_objects: dict[str, bpy.types.Object] = {}
@@ -73,7 +94,13 @@ def build_scene(
             created_objects[node.path] = obj
             if import_matrix is not None:
                 import_matrices[node.path] = import_matrix
-            _link_object_to_scene(obj)
+            _link_object_to_scene(
+                obj,
+                path=node.path,
+                hierarchical=hierarchical_collections,
+                path_prefix=collection_root,
+                root_collection=root_collection,
+            )
 
     # Apply animations - check both direct animations and parent animations
     all_nodes = {n.path: n for n in scene_graph.get_all_nodes()}
@@ -94,11 +121,11 @@ def build_scene(
                 import_matrix=import_matrices.get(path),
             )
 
-    # Set scene frame range based on all animated nodes in illustration paths
+    # Set scene frame range based on all animated nodes (excluding contact forces, etc.)
     animated_nodes = [
         n
         for n in scene_graph.get_animated_nodes()
-        if n.path.startswith(ILLUSTRATION_PREFIX)
+        if not _should_skip_path(n.path)
     ]
     if animated_nodes:
         set_animation_range(
@@ -127,6 +154,94 @@ def _should_skip_path(path: str) -> bool:
         if path.startswith(prefix):
             return True
     return False
+
+
+def _determine_path_prefix(path: str) -> str:
+    """Determine the appropriate prefix to strip from a path.
+
+    Args:
+        path: The node path
+
+    Returns:
+        The prefix to strip (e.g., "/drake/illustration/" or "/drake/paths/")
+    """
+    if path.startswith(ILLUSTRATION_PREFIX):
+        return ILLUSTRATION_PREFIX
+    if path.startswith(PATHS_PREFIX):
+        return PATHS_PREFIX
+    return ""
+
+
+def _get_or_create_root_collection() -> bpy.types.Collection:
+    """Get or create the root collection for meshcat objects.
+
+    Returns:
+        The root MeshcatObjects collection
+    """
+    if DEFAULT_COLLECTION_NAME not in bpy.data.collections:
+        collection = bpy.data.collections.new(DEFAULT_COLLECTION_NAME)
+        bpy.context.scene.collection.children.link(collection)
+    else:
+        collection = bpy.data.collections[DEFAULT_COLLECTION_NAME]
+    return collection
+
+
+def _get_or_create_collection_hierarchy(
+    path: str,
+    root_collection: bpy.types.Collection,
+    path_prefix: str = "",
+) -> bpy.types.Collection:
+    """Get or create a collection hierarchy based on a path.
+
+    Creates nested collections for each path component (except the leaf/object name).
+
+    Args:
+        path: The full meshcat path (e.g., "/drake/paths/move_1/optimized/red/e_0")
+        root_collection: The root collection to build hierarchy under
+        path_prefix: Custom prefix to strip (auto-detected if empty)
+
+    Returns:
+        The collection where the object should be linked
+    """
+    # Determine prefix to strip
+    if path_prefix:
+        prefix = path_prefix
+    else:
+        prefix = _determine_path_prefix(path)
+
+    # Strip prefix from path
+    if prefix and path.startswith(prefix):
+        relative_path = path[len(prefix):]
+    else:
+        relative_path = path.lstrip("/")
+
+    # Split into components and remove the leaf (object name)
+    parts = relative_path.strip("/").split("/")
+    if len(parts) <= 1:
+        # No hierarchy needed, link directly to root
+        return root_collection
+
+    # Remove the leaf component (the object itself)
+    collection_parts = parts[:-1]
+
+    # Create nested collections
+    current_collection = root_collection
+    for part in collection_parts:
+        # Check if child collection already exists
+        child_collection = None
+        for child in current_collection.children:
+            if child.name == part:
+                child_collection = child
+                break
+
+        if child_collection is None:
+            # Create new child collection
+            child_collection = bpy.data.collections.new(part)
+            current_collection.children.link(child_collection)
+
+        current_collection = child_collection
+
+    return current_collection
 
 
 def _derive_object_name(path: str) -> str:
@@ -229,7 +344,7 @@ def _get_local_offset_from_ancestor(
     # This is: obj_world = anim_world * local_offset
     # So: local_offset = inverse(anim_world) * obj_world
     # For simplicity, we collect transforms from anim_node to obj_node
-    from meshcat_html_importer.scene.transforms import combine_transforms, Transform
+    from ..scene.transforms import Transform, combine_transforms
 
     # Start from animation node, walk down to object node
     # Collect all transforms between them
@@ -240,7 +355,8 @@ def _get_local_offset_from_ancestor(
     if len(obj_path_parts) <= len(anim_path_parts):
         return None
 
-    # Collect transforms from nodes between anim_node and obj_node (exclusive of anim, inclusive of obj)
+    # Collect transforms from nodes between anim_node and obj_node
+    # (exclusive of anim, inclusive of obj)
     combined = Transform.identity()
     current = obj_node
 
@@ -298,7 +414,7 @@ def _create_object_from_node(
         Tuple of (Blender object, import_matrix). import_matrix is non-None for
         glTF imports and captures the coordinate conversion rotation.
     """
-    from meshcat_html_importer.scene.geometry import MeshFileGeometry
+    from ..scene.geometry import MeshFileGeometry
 
     # Derive a descriptive name from the path
     # Path format: /drake/illustration/<model_name>/base_link/<model_name>/visual
@@ -414,19 +530,34 @@ def _apply_transform(obj: bpy.types.Object, node: SceneNode) -> None:
     obj.scale = transform.scale
 
 
-def _link_object_to_scene(obj: bpy.types.Object) -> None:
+def _link_object_to_scene(
+    obj: bpy.types.Object,
+    path: str = "",
+    hierarchical: bool = False,
+    path_prefix: str = "",
+    root_collection: bpy.types.Collection | None = None,
+) -> None:
     """Link an object to the current scene.
 
     Args:
         obj: Blender object to link
+        path: The meshcat path for the object (used for hierarchical collections)
+        hierarchical: If True, create nested collections mirroring path structure
+        path_prefix: Custom prefix to strip from paths (auto-detected if empty)
+        root_collection: Pre-created root collection (created if None)
     """
-    # Get or create collection for meshcat objects
-    collection_name = "MeshcatObjects"
-    if collection_name not in bpy.data.collections:
-        collection = bpy.data.collections.new(collection_name)
-        bpy.context.scene.collection.children.link(collection)
+    # Get or create root collection
+    if root_collection is None:
+        root_collection = _get_or_create_root_collection()
+
+    if hierarchical and path:
+        # Create hierarchy and get target collection
+        collection = _get_or_create_collection_hierarchy(
+            path, root_collection, path_prefix
+        )
     else:
-        collection = bpy.data.collections[collection_name]
+        # Link directly to root collection
+        collection = root_collection
 
     # Link object to collection
     collection.objects.link(obj)
@@ -438,6 +569,8 @@ def build_scene_from_file(
     target_fps: float = 30.0,
     start_frame: int = 0,
     clear_scene: bool = True,
+    hierarchical_collections: bool = False,
+    collection_root: str = "",
 ) -> dict[str, bpy.types.Object]:
     """Build a Blender scene directly from an HTML file.
 
@@ -448,6 +581,10 @@ def build_scene_from_file(
         target_fps: Target FPS for Blender animation (default 30)
         start_frame: Starting frame number
         clear_scene: Whether to clear existing objects
+        hierarchical_collections: If True, create nested collections
+                                 mirroring path structure
+        collection_root: Custom prefix to strip from paths
+                        (auto-detected if empty)
 
     Returns:
         Dictionary mapping node paths to created Blender objects
@@ -464,4 +601,6 @@ def build_scene_from_file(
         target_fps=target_fps,
         start_frame=start_frame,
         clear_scene=clear_scene,
+        hierarchical_collections=hierarchical_collections,
+        collection_root=collection_root,
     )
