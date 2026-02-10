@@ -51,6 +51,7 @@ def build_scene(
     clear_scene: bool = True,
     hierarchical_collections: bool = False,
     collection_root: str = "",
+    progress_callback: callable = None,
 ) -> dict[str, bpy.types.Object]:
     """Build a complete Blender scene from parsed meshcat data.
 
@@ -70,12 +71,20 @@ def build_scene(
         Dictionary mapping node paths to created Blender objects
     """
     if clear_scene:
+        if progress_callback:
+            progress_callback('clear_scene', 0, 1)
         _clear_scene()
+        if progress_callback:
+            progress_callback('clear_scene', 1, 1)
 
     # Build scene graph from commands, passing CAS assets for resource resolution
+    if progress_callback:
+        progress_callback('build_graph', 0, 1)
     assets = scene_data.get("assets", {})
     scene_graph = SceneGraph(assets=assets)
     scene_graph.process_commands(scene_data["commands"])
+    if progress_callback:
+        progress_callback('build_graph', 1, 1)
 
     # Get or create root collection for meshcat objects
     root_collection = _get_or_create_root_collection()
@@ -84,10 +93,12 @@ def build_scene(
     created_objects: dict[str, bpy.types.Object] = {}
     import_matrices: dict[str, "mathutils.Matrix"] = {}  # glTF coordinate conversion
 
-    for node in scene_graph.get_mesh_nodes():
-        # Skip excluded paths (contact forces, proximity/collision geometry)
-        if _should_skip_path(node.path):
-            continue
+    mesh_nodes = [n for n in scene_graph.get_mesh_nodes() if not _should_skip_path(n.path)]
+    total_nodes = len(mesh_nodes)
+
+    for idx, node in enumerate(mesh_nodes):
+        if progress_callback:
+            progress_callback('create_objects', idx, total_nodes)
 
         obj, import_matrix = _create_object_from_node(node, scene_graph)
         if obj is not None:
@@ -102,9 +113,17 @@ def build_scene(
                 root_collection=root_collection,
             )
 
+    if progress_callback and total_nodes > 0:
+        progress_callback('create_objects', total_nodes, total_nodes)
+
     # Apply animations - check both direct animations and parent animations
     all_nodes = {n.path: n for n in scene_graph.get_all_nodes()}
-    for path, obj in created_objects.items():
+    total_objects = len(created_objects)
+
+    for idx, (path, obj) in enumerate(created_objects.items()):
+        if progress_callback:
+            progress_callback('apply_animations', idx, total_objects)
+
         # Find animation data for this object or its ancestors
         anim_node = _find_animation_node(scene_graph, path)
         if anim_node is not None:
@@ -121,7 +140,13 @@ def build_scene(
                 import_matrix=import_matrices.get(path),
             )
 
+    if progress_callback and total_objects > 0:
+        progress_callback('apply_animations', total_objects, total_objects)
+
     # Set scene frame range based on all animated nodes (excluding contact forces, etc.)
+    if progress_callback:
+        progress_callback('finalize', 0, 1)
+
     animated_nodes = [
         n
         for n in scene_graph.get_animated_nodes()
@@ -137,6 +162,9 @@ def build_scene(
 
     # Set scene FPS
     bpy.context.scene.render.fps = int(target_fps)
+
+    if progress_callback:
+        progress_callback('finalize', 1, 1)
 
     return created_objects
 
@@ -571,6 +599,7 @@ def build_scene_from_file(
     clear_scene: bool = True,
     hierarchical_collections: bool = False,
     collection_root: str = "",
+    progress_callback: callable = None,
 ) -> dict[str, bpy.types.Object]:
     """Build a Blender scene directly from an HTML file.
 
@@ -603,4 +632,5 @@ def build_scene_from_file(
         clear_scene=clear_scene,
         hierarchical_collections=hierarchical_collections,
         collection_root=collection_root,
+        progress_callback=progress_callback,
     )
