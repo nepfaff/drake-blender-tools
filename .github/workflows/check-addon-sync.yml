@@ -1,0 +1,24 @@
+name: Check Addon Sync
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run make sync-addon
+        run: make sync-addon
+
+      - name: Check for uncommitted sync changes
+        run: |
+          if ! git diff --exit-code blender_addons/; then
+            echo ""
+            echo "ERROR: Addon files are out of sync with the package source."
+            echo "Run 'make sync-addon' and commit the result."
+            exit 1
+          fi
