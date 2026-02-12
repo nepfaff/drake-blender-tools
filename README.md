@@ -69,7 +69,7 @@ You should see a "Keyframe Importer" entry in the sidebar.
 A Blender extension to import meshcat HTML recordings directly.
 
 **Installation (Blender 5.0+):**
-1. Build the addon zip: `make build-addon` (or `cd blender_addons/meshcat_html_importer && zip -r ../meshcat_html_importer.zip .`)
+1. Download `meshcat_html_importer.zip` from the [latest release](../../releases/latest), or build it locally with `make build-addon`
 2. Open Blender
 3. Edit > Preferences > Get Extensions
 4. Click the dropdown arrow and select "Install from Disk..."
@@ -179,3 +179,12 @@ make clean
 ```
 
 The `make build-addon` target creates `meshcat_html_importer.zip` which can be installed in Blender via Edit > Preferences > Get Extensions > Install from Disk.
+
+### Releasing a New Version
+
+Pushing a version tag triggers a GitHub Actions workflow that builds the addon zip and creates a GitHub Release with the zip attached.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
