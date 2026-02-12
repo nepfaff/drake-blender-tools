@@ -16,11 +16,17 @@ dev = [
     "numpy>=1.26,<2.0",
     "msgpack>=1.0.0",
     "bpy>=5.0.0",
+    "meshcat-html-importer",
+    "drake-recording-server",
 ]
 
 [tool.uv]
 # Make this a virtual workspace (not an installable package)
 package = false
+
+[tool.uv.sources]
+meshcat-html-importer = { workspace = true }
+drake-recording-server = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

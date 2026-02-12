@@ -1,87 +1,50 @@
 # Drake Blender Tools
 
-A monorepo containing tools for working with Drake simulations in Blender.
+Tools for importing [Drake](https://drake.mit.edu/) simulations into Blender. Record your simulations with [meshcat](https://github.com/meshcat-dev/meshcat) and import them into Blender with full geometry, materials, and animation support.
 
-Allows you to easily record Drake simulations and import them into Blender for
-visualization. The Blender scenes are animated using keyframes.
-
-Note that part of the code is based on
-[Drake Blender](https://github.com/RobotLocomotion/drake-blender).
-This work was inspired by
-[pybullet-blender-recorder](https://github.com/huy-ha/pybullet-blender-recorder).
-
-Below is an example video from
-[Steerable Scene Generation](https://steerable-scene-generation.github.io/) that was
-enabled by Drake Blender Recorder. All individual clips from that video were created
-by first simulating in Drake, exporting into Blender using Drake Blender Recorder, and
-then rendering with Blender.
+All Blender videos on [SceneSmith](https://scenesmith.github.io/) were created with the meshcat HTML importer.
 
 <a href="https://youtu.be/oh9RajpEjKw">
   <img src="media/steerable_scene_generation.png" alt="example_video" width="400">
 </a>
 
-## Packages
+## Meshcat HTML Importer
 
-### [drake-recording-server](./packages/drake-recording-server/)
+### Installation (Blender 5.0+)
 
-A Flask server that records Drake simulation states as Blender keyframes. It implements Drake's glTF Render Client-Server API but instead of rendering images, it saves object poses that can be imported into Blender.
-
-```bash
-drake-recording-server \
-    --export_path output/scene.blend \
-    --keyframe_dump_path output/keyframes.pkl
-```
-
-### [meshcat-html-importer](./packages/meshcat-html-importer/)
-
-Import meshcat HTML recordings (saved from the meshcat web viewer) into Blender with full geometry, materials, and animation support.
-
-**CLI usage** (requires `bpy` package):
-```bash
-meshcat-html-import recording.html -o scene.blend
-```
-
-**Blender addon** (recommended): File > Import > Meshcat Recording (.html) - see [addon installation](#meshcat-html-importer-blender_addonsmeshcat_html_importer) below.
-
-## Blender Addons
-
-### Keyframe Importer (`blender_addons/keyframe_importer.py`)
-
-A Blender addon to import keyframe data from the recording server.
-
-**Installation:**
-1. Open Blender
-2. Edit > Preferences > Add-ons
-3. Click on the down arrow in the top right corner and select "Install from Disk..."
-4. Select `blender_addons/keyframe_importer.py`
-5. Enable the "Keyframe Importer" addon
-
-![Blender Plugin Installation](media/blender_plugin_install.png)
-
-![Blender Addon Enabled](media/blender_plugin_enabled.png)
-
-You should see a "Keyframe Importer" entry in the sidebar.
-
-![Blender Sidebar](media/blender_sidebar.png)
-
-### Meshcat HTML Importer (`blender_addons/meshcat_html_importer/`)
-
-A Blender extension to import meshcat HTML recordings directly.
-
-**Installation (Blender 5.0+):**
-1. Download `meshcat_html_importer.zip` from the [latest release](../../releases/latest), or build it locally with `make build-addon`
+1. Download `meshcat_html_importer.zip` from the [latest release](../../releases/latest)
 2. Open Blender
 3. Edit > Preferences > Get Extensions
 4. Click the dropdown arrow and select "Install from Disk..."
 5. Select the `meshcat_html_importer.zip` file
 
-**Usage:**
-1. File > Import > Meshcat Recording (.html)
-2. Select your meshcat HTML recording
-3. Configure FPS and other options
-4. Import
+### Usage
 
-## Installation
+1. Save your meshcat visualization as HTML
+2. Import into Blender using one of:
+   - **File > Import > Meshcat Recording (.html)**
+   - **Drag and drop** the `.html` file directly onto the Blender viewport
+3. Configure import options and import
+
+### Import Options
+
+| Option | Description | Default |
+|---|---|---|
+| Recording FPS | FPS of the recording (0 = auto-detect) | 0 (auto) |
+| Target FPS | Animation FPS in Blender | 30 |
+| Start Frame | First frame number | 0 |
+| Clear Scene | Remove existing objects before import | On |
+| Hierarchical Collections | Create nested collections mirroring the meshcat scene tree | On |
+
+### CLI Usage
+
+For headless or scripted workflows (requires the `bpy` package). If you've set up the [development environment](#development), the CLI is already available:
+
+```bash
+meshcat-html-import recording.html -o scene.blend
+```
+
+## Development
 
 This project uses [uv](https://github.com/astral-sh/uv) for package management.
 
@@ -89,18 +52,51 @@ This project uses [uv](https://github.com/astral-sh/uv) for package management.
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install all packages (including dev dependencies)
-uv sync --extra dev
+# Install all packages with dev dependencies
+uv sync --all-extras
 
-# Install workspace packages
-uv pip install -e packages/drake-recording-server -e packages/meshcat-html-importer
+# Run tests
+uv run pytest
+
+# Format and lint
+uv run ruff format .
+uv run ruff check --fix .
 ```
 
-## Workflow
+### Building the Blender Addon
 
-### Recording Server Workflow
+The addon source lives in `packages/meshcat-html-importer/src/` and is synced to `blender_addons/meshcat_html_importer/` with absolute imports converted to relative imports (required by Blender 5.0's extension policy). After making changes to the package:
 
-#### Recording from Drake Simulation
+```bash
+# Sync package code to addon and convert imports
+make sync-addon
+
+# Build addon zip for distribution
+make build-addon
+```
+
+### Releasing a New Version
+
+Pushing a version tag triggers a GitHub Actions workflow that builds the addon zip and creates a GitHub Release with the zip attached.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+## Legacy: Drake Recording Server
+
+An older workflow that records Drake simulations via a Flask server implementing Drake's glTF Render Client-Server API. Instead of rendering images, it saves object poses as keyframes that can be imported into Blender.
+
+See the [drake-recording-server package](./packages/drake-recording-server/) for full documentation.
+
+### Setup
+
+```bash
+uv pip install -e packages/drake-recording-server
+```
+
+### Workflow
 
 1. Start the recording server:
    ```bash
@@ -111,80 +107,23 @@ uv pip install -e packages/drake-recording-server -e packages/meshcat-html-impor
    ```
    Note that you need to re-start the server whenever you want to start a new recording.
 
-2. Run your simulation. Note that every render request from a Blender camera
-   will trigger the recording of a new keyframe. The example simulation script shows
-   how to set up such a camera:
+2. Run your simulation. Every render request from a Blender camera triggers the recording of a new keyframe:
    ```bash
    python examples/example_sim.py
    ```
 
 3. Open the exported `.blend` file in Blender
 
-4. Use the "Keyframe Importer" addon to import the `.pkl` file
+4. Install the Keyframe Importer addon (`blender_addons/keyframe_importer.py`) via Edit > Preferences > Add-ons > Install from Disk
+
+5. Use the "Keyframe Importer" sidebar panel to import the `.pkl` file
 
 ![Blender Import](media/blender_pkl_import.png)
 
-You can now play back the animation in Blender.
-
 ![Blender Playback](media/blender_imported_keyframes.gif)
 
-#### Examples
+Pre-recorded example files are provided in `examples/example_output/` for testing without a running Drake simulation.
 
-We provide pre-recorded example files in `examples/example_output/` for testing.
+## Acknowledgements
 
-The example is a simple iiwa teleop. It will open up a Meshcat window that can be used
-for controlling the iiwa arm.
-
-The final render might look something like this:
-
-![Blender Playback](media/blender_playback.gif)
-
-### Meshcat HTML Importer Workflow
-
-1. Save your meshcat visualization as HTML (using the save button in meshcat viewer)
-
-2. Import using either:
-   - **Blender addon** (recommended): File > Import > Meshcat Recording (.html)
-   - **CLI** (requires `bpy` package): `meshcat-html-import recording.html -o scene.blend`
-
-## Development
-
-```bash
-# Install dev dependencies
-uv sync --all-extras
-
-# Run tests
-uv run pytest
-
-# Format code
-uv run ruff format .
-
-# Lint
-uv run ruff check .
-```
-
-### Building the Blender Addon
-
-The Blender addon's subpackages (`parser/`, `scene/`, `animation/`, `blender_impl/`) are synced from the `meshcat-html-importer` package source with absolute imports converted to relative imports (required by Blender 5.0's extension policy). After making changes to the package, sync and build the addon:
-
-```bash
-# Sync package code to addon and convert imports
-make sync-addon
-
-# Build addon zip for distribution
-make build-addon
-
-# Clean build artifacts
-make clean
-```
-
-The `make build-addon` target creates `meshcat_html_importer.zip` which can be installed in Blender via Edit > Preferences > Get Extensions > Install from Disk.
-
-### Releasing a New Version
-
-Pushing a version tag triggers a GitHub Actions workflow that builds the addon zip and creates a GitHub Release with the zip attached.
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+Part of the code is based on [Drake Blender](https://github.com/RobotLocomotion/drake-blender). This work was inspired by [pybullet-blender-recorder](https://github.com/huy-ha/pybullet-blender-recorder).

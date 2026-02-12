@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 
 [manifest]
@@ -291,6 +291,8 @@ source = { virtual = "." }
 [package.optional-dependencies]
 dev = [
     { name = "bpy" },
+    { name = "drake-recording-server" },
+    { name = "meshcat-html-importer" },
     { name = "msgpack" },
     { name = "numpy" },
     { name = "pytest" },
@@ -300,6 +302,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bpy", marker = "extra == 'dev'", specifier = ">=5.0.0" },
+    { name = "drake-recording-server", marker = "extra == 'dev'", editable = "packages/drake-recording-server" },
+    { name = "meshcat-html-importer", marker = "extra == 'dev'", editable = "packages/meshcat-html-importer" },
     { name = "msgpack", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26,<2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },

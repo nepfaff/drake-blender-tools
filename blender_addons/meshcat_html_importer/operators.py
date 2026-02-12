@@ -39,8 +39,8 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
     filepath: StringProperty(
         name="File Path",
         description="Path to the meshcat HTML file",
-        subtype='FILE_PATH',
-        options={'SKIP_SAVE', 'HIDDEN'}
+        subtype="FILE_PATH",
+        options={"SKIP_SAVE", "HIDDEN"},
     )
 
     recording_fps: FloatProperty(
@@ -91,7 +91,8 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
 
     def invoke(self, context, event):
         """Show properties popup when file is dropped."""
-        # Only show popup for drag-and-drop (not for menu import which uses ImportHelper)
+        # Only show popup for drag-and-drop
+        # (not for menu import which uses ImportHelper)
         if not self.filepath:
             # Menu import - use default ImportHelper behavior
             return ImportHelper.invoke(self, context, event)
@@ -115,23 +116,25 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
     def execute(self, context):
         # Validate file exists
         if not self.filepath:
-            self.report({'ERROR'}, "No file selected")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, "No file selected")
+            return {"CANCELLED"}
 
         # Quick validation: check if file contains meshcat patterns
         try:
-            with open(self.filepath, 'r', encoding='utf-8') as f:
+            with open(self.filepath, "r", encoding="utf-8") as f:
                 content = f.read(1000)  # Read first 1KB for quick check
                 # Check for meshcat-specific patterns
-                has_meshcat = ('meshcat' in content.lower() or
-                              'MeshCat' in content or
-                              'meshcat-pane' in content)
+                has_meshcat = (
+                    "meshcat" in content.lower()
+                    or "MeshCat" in content
+                    or "meshcat-pane" in content
+                )
                 if not has_meshcat:
-                    self.report({'ERROR'}, "Not a valid meshcat HTML recording")
-                    return {'CANCELLED'}
+                    self.report({"ERROR"}, "Not a valid meshcat HTML recording")
+                    return {"CANCELLED"}
         except Exception as e:
-            self.report({'ERROR'}, f"Failed to read file: {str(e)}")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, f"Failed to read file: {str(e)}")
+            return {"CANCELLED"}
 
         # Initialize progress indicator
         wm = context.window_manager
@@ -143,34 +146,37 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
             # Step 1: Parse HTML file (0-30%)
             wm.progress_update(0)
             print("[Meshcat Import] Parsing meshcat HTML file... (0%)")
-            self.report({'INFO'}, "Parsing meshcat HTML file...")
+            self.report({"INFO"}, "Parsing meshcat HTML file...")
             scene_data = parse_html_recording(self.filepath)
             wm.progress_update(30)
             print("[Meshcat Import] Parsing complete (30%)")
 
             # Step 2: Build scene with progress tracking (30-100%)
-            self.report({'INFO'}, "Building Blender scene...")
+            self.report({"INFO"}, "Building Blender scene...")
 
             # Create progress callback
             def update_progress(stage, current, total):
                 """Update progress based on stage and item count."""
                 # Map stages to progress ranges and descriptions
                 stage_info = {
-                    'clear_scene': (30, 35, "Clearing scene"),
-                    'build_graph': (35, 40, "Building scene graph"),
-                    'create_objects': (40, 80, "Creating objects"),
-                    'apply_animations': (80, 95, "Applying animations"),
-                    'finalize': (95, 100, "Finalizing"),
+                    "clear_scene": (30, 35, "Clearing scene"),
+                    "build_graph": (35, 40, "Building scene graph"),
+                    "create_objects": (40, 80, "Creating objects"),
+                    "apply_animations": (80, 95, "Applying animations"),
+                    "finalize": (95, 100, "Finalizing"),
                 }
                 if stage in stage_info:
                     start, end, description = stage_info[stage]
                     if total > 0:
                         progress = start + int((current / total) * (end - start))
                         # Print to console for visibility
-                        print(f"[Meshcat Import] {description}: {current}/{total} ({progress}%)")
+                        print(
+                            f"[Meshcat Import] {description}: "
+                            f"{current}/{total} ({progress}%)"
+                        )
                         # Only report every 10% or at milestones to avoid UI spam
                         if current == 0 or current == total or progress % 10 == 0:
-                            self.report({'INFO'}, f"{description}: {current}/{total}")
+                            self.report({"INFO"}, f"{description}: {current}/{total}")
                     else:
                         progress = end
                         print(f"[Meshcat Import] {description}... ({progress}%)")

@@ -72,19 +72,19 @@ def build_scene(
     """
     if clear_scene:
         if progress_callback:
-            progress_callback('clear_scene', 0, 1)
+            progress_callback("clear_scene", 0, 1)
         _clear_scene()
         if progress_callback:
-            progress_callback('clear_scene', 1, 1)
+            progress_callback("clear_scene", 1, 1)
 
     # Build scene graph from commands, passing CAS assets for resource resolution
     if progress_callback:
-        progress_callback('build_graph', 0, 1)
+        progress_callback("build_graph", 0, 1)
     assets = scene_data.get("assets", {})
     scene_graph = SceneGraph(assets=assets)
     scene_graph.process_commands(scene_data["commands"])
     if progress_callback:
-        progress_callback('build_graph', 1, 1)
+        progress_callback("build_graph", 1, 1)
 
     # Get or create root collection for meshcat objects
     root_collection = _get_or_create_root_collection()
@@ -93,12 +93,14 @@ def build_scene(
     created_objects: dict[str, bpy.types.Object] = {}
     import_matrices: dict[str, "mathutils.Matrix"] = {}  # glTF coordinate conversion
 
-    mesh_nodes = [n for n in scene_graph.get_mesh_nodes() if not _should_skip_path(n.path)]
+    mesh_nodes = [
+        n for n in scene_graph.get_mesh_nodes() if not _should_skip_path(n.path)
+    ]
     total_nodes = len(mesh_nodes)
 
     for idx, node in enumerate(mesh_nodes):
         if progress_callback:
-            progress_callback('create_objects', idx, total_nodes)
+            progress_callback("create_objects", idx, total_nodes)
 
         obj, import_matrix = _create_object_from_node(node, scene_graph)
         if obj is not None:
@@ -114,7 +116,7 @@ def build_scene(
             )
 
     if progress_callback and total_nodes > 0:
-        progress_callback('create_objects', total_nodes, total_nodes)
+        progress_callback("create_objects", total_nodes, total_nodes)
 
     # Apply animations - check both direct animations and parent animations
     all_nodes = {n.path: n for n in scene_graph.get_all_nodes()}
@@ -122,7 +124,7 @@ def build_scene(
 
     for idx, (path, obj) in enumerate(created_objects.items()):
         if progress_callback:
-            progress_callback('apply_animations', idx, total_objects)
+            progress_callback("apply_animations", idx, total_objects)
 
         # Find animation data for this object or its ancestors
         anim_node = _find_animation_node(scene_graph, path)
@@ -141,16 +143,14 @@ def build_scene(
             )
 
     if progress_callback and total_objects > 0:
-        progress_callback('apply_animations', total_objects, total_objects)
+        progress_callback("apply_animations", total_objects, total_objects)
 
     # Set scene frame range based on all animated nodes (excluding contact forces, etc.)
     if progress_callback:
-        progress_callback('finalize', 0, 1)
+        progress_callback("finalize", 0, 1)
 
     animated_nodes = [
-        n
-        for n in scene_graph.get_animated_nodes()
-        if not _should_skip_path(n.path)
+        n for n in scene_graph.get_animated_nodes() if not _should_skip_path(n.path)
     ]
     if animated_nodes:
         set_animation_range(
@@ -164,7 +164,7 @@ def build_scene(
     bpy.context.scene.render.fps = int(target_fps)
 
     if progress_callback:
-        progress_callback('finalize', 1, 1)
+        progress_callback("finalize", 1, 1)
 
     return created_objects
 
@@ -239,7 +239,7 @@ def _get_or_create_collection_hierarchy(
 
     # Strip prefix from path
     if prefix and path.startswith(prefix):
-        relative_path = path[len(prefix):]
+        relative_path = path[len(prefix) :]
     else:
         relative_path = path.lstrip("/")
 
