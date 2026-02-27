@@ -101,6 +101,9 @@ def apply_animation(
     for kf in blender_keyframes:
         _insert_keyframe(obj, kf)
 
+    # Set CONSTANT interpolation for visibility fcurves (step function, no blending)
+    _set_visibility_interpolation_constant(action)
+
 
 def _apply_local_offset_to_keyframes(
     keyframes: list[BlenderKeyframe],
@@ -135,38 +138,54 @@ def _apply_local_offset_to_keyframes(
 
     result = []
     for kf in keyframes:
-        # Build parent transform from keyframe
-        # Note: Blender keyframes have rotation in (w,x,y,z),
-        # need to convert to (x,y,z,w)
-        parent_pos = kf.location or (0.0, 0.0, 0.0)
-        if kf.rotation_quaternion:
-            # Blender format is (w,x,y,z), convert to internal (x,y,z,w)
-            w, x, y, z = kf.rotation_quaternion
-            parent_rot = (x, y, z, w)
-        else:
-            parent_rot = (0.0, 0.0, 0.0, 1.0)
-        parent_scale = kf.scale or (1.0, 1.0, 1.0)
-
-        parent_transform = Transform(
-            translation=parent_pos,
-            rotation=parent_rot,
-            scale=parent_scale,
+        has_transform = (
+            kf.location is not None
+            or kf.rotation_quaternion is not None
+            or kf.scale is not None
         )
 
-        # Combine: child_world = parent * local_offset
-        combined = combine_transforms(parent_transform, offset_transform)
+        if has_transform:
+            # Build parent transform from keyframe
+            # Note: Blender keyframes have rotation in (w,x,y,z),
+            # need to convert to (x,y,z,w)
+            parent_pos = kf.location or (0.0, 0.0, 0.0)
+            if kf.rotation_quaternion:
+                # Blender format is (w,x,y,z), convert to internal (x,y,z,w)
+                w, x, y, z = kf.rotation_quaternion
+                parent_rot = (x, y, z, w)
+            else:
+                parent_rot = (0.0, 0.0, 0.0, 1.0)
+            parent_scale = kf.scale or (1.0, 1.0, 1.0)
 
-        # Convert rotation back to Blender format (w,x,y,z)
-        new_rot = convert_quaternion_to_blender(combined.rotation)
-
-        result.append(
-            BlenderKeyframe(
-                frame=kf.frame,
-                location=combined.translation,
-                rotation_quaternion=new_rot,
-                scale=combined.scale if kf.scale else None,
+            parent_transform = Transform(
+                translation=parent_pos,
+                rotation=parent_rot,
+                scale=parent_scale,
             )
-        )
+
+            # Combine: child_world = parent * local_offset
+            combined = combine_transforms(parent_transform, offset_transform)
+
+            # Convert rotation back to Blender format (w,x,y,z)
+            new_rot = convert_quaternion_to_blender(combined.rotation)
+
+            result.append(
+                BlenderKeyframe(
+                    frame=kf.frame,
+                    location=combined.translation,
+                    rotation_quaternion=new_rot,
+                    scale=combined.scale if kf.scale else None,
+                    hide_viewport=kf.hide_viewport,
+                )
+            )
+        else:
+            # Visibility-only keyframe, no transform to offset
+            result.append(
+                BlenderKeyframe(
+                    frame=kf.frame,
+                    hide_viewport=kf.hide_viewport,
+                )
+            )
 
     return result
 
@@ -194,35 +213,51 @@ def _apply_import_matrix_to_keyframes(
 
     result = []
     for kf in keyframes:
-        loc = kf.location or (0.0, 0.0, 0.0)
-        scale = kf.scale or (1.0, 1.0, 1.0)
-
-        if kf.rotation_quaternion:
-            quat = mathutils.Quaternion(kf.rotation_quaternion)
-        else:
-            quat = mathutils.Quaternion()  # identity
-
-        # Build meshcat keyframe matrix
-        meshcat_matrix = mathutils.Matrix.LocRotScale(
-            mathutils.Vector(loc),
-            quat,
-            mathutils.Vector(scale),
+        has_transform = (
+            kf.location is not None
+            or kf.rotation_quaternion is not None
+            or kf.scale is not None
         )
 
-        # Combine: meshcat positioning × import coordinate conversion
-        combined = meshcat_matrix @ import_matrix
+        if has_transform:
+            loc = kf.location or (0.0, 0.0, 0.0)
+            scale = kf.scale or (1.0, 1.0, 1.0)
 
-        # Decompose back to loc, rot, scale
-        new_loc, new_rot, new_scale = combined.decompose()
+            if kf.rotation_quaternion:
+                quat = mathutils.Quaternion(kf.rotation_quaternion)
+            else:
+                quat = mathutils.Quaternion()  # identity
 
-        result.append(
-            BlenderKeyframe(
-                frame=kf.frame,
-                location=tuple(new_loc),
-                rotation_quaternion=(new_rot.w, new_rot.x, new_rot.y, new_rot.z),
-                scale=tuple(new_scale) if kf.scale else None,
+            # Build meshcat keyframe matrix
+            meshcat_matrix = mathutils.Matrix.LocRotScale(
+                mathutils.Vector(loc),
+                quat,
+                mathutils.Vector(scale),
             )
-        )
+
+            # Combine: meshcat positioning × import coordinate conversion
+            combined = meshcat_matrix @ import_matrix
+
+            # Decompose back to loc, rot, scale
+            new_loc, new_rot, new_scale = combined.decompose()
+
+            result.append(
+                BlenderKeyframe(
+                    frame=kf.frame,
+                    location=tuple(new_loc),
+                    rotation_quaternion=(new_rot.w, new_rot.x, new_rot.y, new_rot.z),
+                    scale=tuple(new_scale) if kf.scale else None,
+                    hide_viewport=kf.hide_viewport,
+                )
+            )
+        else:
+            # Visibility-only keyframe, no transform to convert
+            result.append(
+                BlenderKeyframe(
+                    frame=kf.frame,
+                    hide_viewport=kf.hide_viewport,
+                )
+            )
 
     return result
 
@@ -247,6 +282,32 @@ def _insert_keyframe(obj: bpy.types.Object, kf: BlenderKeyframe) -> None:
     if kf.scale is not None:
         obj.scale = kf.scale
         obj.keyframe_insert(data_path="scale", frame=frame)
+
+    if kf.hide_viewport is not None:
+        obj.hide_viewport = kf.hide_viewport
+        obj.keyframe_insert(data_path="hide_viewport", frame=frame)
+        obj.hide_render = kf.hide_viewport
+        obj.keyframe_insert(data_path="hide_render", frame=frame)
+
+
+def _set_visibility_interpolation_constant(action: bpy.types.Action) -> None:
+    """Set CONSTANT interpolation on visibility fcurves.
+
+    Visibility is a boolean property that should not be interpolated between
+    keyframes. CONSTANT interpolation ensures step-function behavior.
+
+    Uses Blender 5.0's layered action structure to access fcurves.
+
+    Args:
+        action: Blender action containing the fcurves
+    """
+    for layer in action.layers:
+        for strip in layer.strips:
+            for channelbag in strip.channelbags:
+                for fcurve in channelbag.fcurves:
+                    if fcurve.data_path in ("hide_viewport", "hide_render"):
+                        for keyframe_point in fcurve.keyframe_points:
+                            keyframe_point.interpolation = "CONSTANT"
 
 
 def apply_animation_batch(

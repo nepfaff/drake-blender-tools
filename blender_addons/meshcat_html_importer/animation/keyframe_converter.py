@@ -18,6 +18,7 @@ class BlenderKeyframe:
     location: tuple[float, float, float] | None = None
     rotation_quaternion: tuple[float, float, float, float] | None = None  # (w,x,y,z)
     scale: tuple[float, float, float] | None = None
+    hide_viewport: bool | None = None
 
 
 def convert_quaternion_to_blender(
@@ -218,6 +219,11 @@ def convert_keyframes_to_blender(
 ) -> list[BlenderKeyframe]:
     """Convert meshcat keyframes to Blender format.
 
+    Visibility keyframes are converted separately from transform keyframes.
+    Transforms may be downsampled (interpolated) to match target FPS, but
+    visibility is a discrete step function and is always mapped exactly to
+    its target frame without interpolation.
+
     Args:
         keyframes: List of AnimationKeyframe from scene node
         recording_fps: FPS of the original recording
@@ -232,13 +238,23 @@ def convert_keyframes_to_blender(
     if not keyframes:
         return []
 
-    # Downsample if requested
+    # Extract visibility keyframes directly (no downsampling).
+    # Visibility is a discrete step function — each transition must land on
+    # its exact target frame to avoid lost show/hide events.
+    visibility_by_frame: dict[int, bool] = {}
+    for kf in keyframes:
+        if kf.visible is not None:
+            frame = time_to_frame(kf.time, recording_fps, target_fps, start_frame)
+            visibility_by_frame[frame] = not kf.visible  # invert: visible -> hide
+
+    # Downsample transform keyframes
     if downsample:
         processed_kfs = downsample_keyframes(keyframes, recording_fps, target_fps)
     else:
         processed_kfs = keyframes
 
     blender_keyframes = []
+    frames_seen: set[int] = set()
 
     for kf in processed_kfs:
         # After downsampling, time is already in target frames
@@ -246,6 +262,8 @@ def convert_keyframes_to_blender(
             frame = start_frame + int(round(kf.time))
         else:
             frame = time_to_frame(kf.time, recording_fps, target_fps, start_frame)
+
+        frames_seen.add(frame)
 
         # Convert quaternion format
         rotation = None
@@ -257,8 +275,16 @@ def convert_keyframes_to_blender(
             location=kf.position,
             rotation_quaternion=rotation,
             scale=kf.scale,
+            hide_viewport=visibility_by_frame.pop(frame, None),
         )
         blender_keyframes.append(blender_kf)
+
+    # Add visibility-only keyframes for transitions not covered by downsampling
+    for frame, hide in sorted(visibility_by_frame.items()):
+        blender_keyframes.append(BlenderKeyframe(frame=frame, hide_viewport=hide))
+
+    # Sort by frame to ensure correct ordering
+    blender_keyframes.sort(key=lambda kf: kf.frame)
 
     return blender_keyframes
 

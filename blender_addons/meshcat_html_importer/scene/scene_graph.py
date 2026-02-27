@@ -32,6 +32,7 @@ class AnimationKeyframe:
     position: tuple[float, float, float] | None = None
     rotation: tuple[float, float, float, float] | None = None  # Quaternion (x,y,z,w)
     scale: tuple[float, float, float] | None = None
+    visible: bool | None = None
 
 
 @dataclass
@@ -337,6 +338,8 @@ class SceneGraph:
                     kf.rotation = tuple(value)
                 elif ".scale" in track_name or track_name == ".scale":
                     kf.scale = tuple(value)
+                elif ".visible" in track_name or track_name == ".visible":
+                    kf.visible = bool(value)
 
             node.keyframes.append(kf)
 
