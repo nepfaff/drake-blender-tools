@@ -703,7 +703,7 @@ wheels = [
 
 [[package]]
 name = "meshcat-html-importer"
-version = "0.1.0"
+version = "0.1.2"
 source = { editable = "packages/meshcat-html-importer" }
 dependencies = [
     { name = "msgpack" },

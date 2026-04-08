@@ -1,6 +1,6 @@
 [project]
 name = "meshcat-html-importer"
-version = "0.1.0"
+version = "0.1.2"
 description = "Import meshcat HTML recordings into Blender"
 authors = [{ name = "Nicholas Pfaff", email = "nepfaff@mit.edu" }]
 readme = "README.md"

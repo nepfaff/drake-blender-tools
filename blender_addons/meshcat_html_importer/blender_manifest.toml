@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "meshcat_html_importer"
-version = "0.1.1"
+version = "0.1.2"
 name = "Meshcat HTML Importer"
 tagline = "Import meshcat HTML recordings into Blender"
 maintainer = "Nicholas Pfaff <nepfaff@mit.edu>"
