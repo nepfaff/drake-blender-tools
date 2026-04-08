@@ -149,6 +149,58 @@ class TestGeometry:
         invalid = MeshGeometry(positions=np.array([]))
         assert not invalid.validate()
 
+    def test_obj_meshfile_uses_mtl_library_resource(self):
+        """Test OBJ meshfiles reconstruct the referenced MTL file."""
+        from meshcat_html_importer.parser.command_types import Command
+        from meshcat_html_importer.scene.scene_graph import SceneGraph
+
+        cmd = Command.from_dict(
+            {
+                "type": "set_object",
+                "path": "/test/object",
+                "object": {
+                    "object": {
+                        "type": "_meshfile_object",
+                        "uuid": "mesh-1",
+                        "format": "obj",
+                        "matrix": [
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                        ],
+                        "data": "mtllib tray.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",
+                        "mtl_library": "newmtl tray\nmap_Kd tray.png\n",
+                        "resources": {
+                            "tray.png": "data:image/png;base64,dGV4dHVyZS1ieXRlcw==",
+                        },
+                    }
+                },
+            }
+        )
+
+        scene_graph = SceneGraph()
+        scene_graph.process_commands([cmd])
+
+        node = next(n for n in scene_graph.get_mesh_nodes() if n.path == "/test/object")
+
+        assert node.geometry is not None
+        assert node.geometry.format == "obj"
+        assert node.geometry.resources["tray.mtl"] == b"newmtl tray\nmap_Kd tray.png\n"
+        assert node.geometry.resources["tray.png"] == b"texture-bytes"
+
 
 class TestMaterials:
     """Tests for material parsing."""

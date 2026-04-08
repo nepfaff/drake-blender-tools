@@ -91,7 +91,7 @@ def build_scene(
 
     # Create objects for each node with geometry (filtering excluded paths)
     created_objects: dict[str, bpy.types.Object] = {}
-    import_matrices: dict[str, "mathutils.Matrix"] = {}  # glTF coordinate conversion
+    import_matrices: dict[str, "mathutils.Matrix"] = {}  # glTF static import transforms
 
     mesh_nodes = [
         n for n in scene_graph.get_mesh_nodes() if not _should_skip_path(n.path)
@@ -440,7 +440,7 @@ def _create_object_from_node(
 
     Returns:
         Tuple of (Blender object, import_matrix). import_matrix is non-None for
-        glTF imports and captures the coordinate conversion rotation.
+        glTF imports and captures Blender's static glTF import transform.
     """
     from ..scene.geometry import MeshFileGeometry
 
@@ -495,13 +495,13 @@ def _apply_world_transform(
     """Apply world transform to Blender object.
 
     Computes the full world transform by combining all parent transforms.
-    For glTF imports, also incorporates the importer's coordinate conversion
-    matrix to preserve correct mesh orientation.
+    For glTF imports, also incorporates Blender's static import transform so
+    embedded glTF node offsets remain intact.
 
     Args:
         obj: Blender object
         node: SceneNode with transform
-        import_matrix: Optional coordinate conversion matrix from glTF importer.
+        import_matrix: Optional static import matrix from Blender's glTF importer.
             When provided, the final world matrix is: meshcat_world × import_matrix
     """
     import mathutils
@@ -510,10 +510,9 @@ def _apply_world_transform(
     transform = node.get_world_transform()
 
     if import_matrix is not None:
-        # For glTF: combine meshcat world transform with the importer's
-        # coordinate conversion. The import_matrix handles the conversion
-        # from glTF model space to Blender's coordinate system (e.g., Y-up
-        # to Z-up). The meshcat transform positions the object in the scene.
+        # For glTF: combine the meshcat world transform with Blender's static
+        # import transform. This preserves axis conversion and any local
+        # transforms embedded in the imported glTF nodes.
         # Build meshcat world matrix
         x, y, z, w = transform.rotation
         quat = mathutils.Quaternion((w, x, y, z))

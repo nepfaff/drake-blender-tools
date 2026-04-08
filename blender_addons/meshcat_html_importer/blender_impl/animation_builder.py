@@ -44,9 +44,9 @@ def apply_animation(
         start_frame: Starting frame number
         local_offset: Optional (position, rotation) offset to apply when animation
                      is inherited from a parent node
-        import_matrix: Optional coordinate conversion matrix from glTF importer.
+        import_matrix: Optional static import matrix from Blender's glTF importer.
                       When provided, each keyframe transform is combined with this
-                      matrix to preserve correct mesh orientation.
+                      matrix to preserve Blender's imported glTF offsets.
     """
     if not node.keyframes:
         return
@@ -69,7 +69,7 @@ def apply_animation(
             blender_keyframes, local_offset
         )
 
-    # Apply import matrix for glTF objects (coordinate system conversion)
+    # Apply import matrix for glTF objects (axis conversion + embedded node offsets)
     if import_matrix is not None:
         blender_keyframes = _apply_import_matrix_to_keyframes(
             blender_keyframes, import_matrix
@@ -194,17 +194,18 @@ def _apply_import_matrix_to_keyframes(
     keyframes: list[BlenderKeyframe],
     import_matrix: "mathutils.Matrix",
 ) -> list[BlenderKeyframe]:
-    """Apply glTF import coordinate conversion to keyframes.
+    """Apply Blender's static glTF import transform to keyframes.
 
-    For glTF objects, the importer applies a coordinate conversion rotation
-    (e.g., Y-up to Z-up). When animating, each keyframe's meshcat transform
-    must be combined with this import matrix to preserve correct orientation.
+    For glTF objects, Blender's importer may apply axis conversion and preserve
+    transforms embedded in the glTF nodes. When animating, each keyframe's
+    meshcat transform must be combined with this import matrix so the imported
+    geometry stays aligned.
 
     The final transform is: meshcat_keyframe_matrix @ import_matrix
 
     Args:
         keyframes: List of BlenderKeyframe (already in Blender convention)
-        import_matrix: Coordinate conversion matrix from glTF importer
+        import_matrix: Static import matrix from Blender's glTF importer
 
     Returns:
         New list of keyframes with import matrix applied

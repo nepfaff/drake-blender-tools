@@ -226,12 +226,14 @@ def _parse_meshfile_geometry(
 
     fmt = geom_data.get("format", "")
     data = geom_data.get("data")
+    mtl_library = geom_data.get("mtl_library") or ""
 
     if not data:
         return None
 
     # For glTF format, we need to resolve CAS asset references in the JSON
     resources = {}
+    obj_text = data if isinstance(data, str) else None
 
     if fmt.lower() == "gltf" and isinstance(data, str) and cas_assets:
         try:
@@ -286,6 +288,12 @@ def _parse_meshfile_geometry(
     resources_data = geom_data.get("resources", {})
     for key, value in resources_data.items():
         if isinstance(value, str):
+            if value.startswith("data:"):
+                decoded = _decode_data_uri(value)
+                if decoded is not None:
+                    resources[key] = decoded
+                    continue
+
             try:
                 resources[key] = base64.b64decode(value, validate=True)
             except Exception:
@@ -295,11 +303,44 @@ def _parse_meshfile_geometry(
         else:
             resources[key] = value
 
+    # Meshcat stores OBJ material libraries separately from the resources map.
+    # Reconstruct the referenced .mtl file so Blender can resolve materials.
+    if fmt.lower() == "obj" and mtl_library:
+        mtl_name = _extract_obj_mtl_name(obj_text)
+        if mtl_name and mtl_name not in resources:
+            resources[mtl_name] = mtl_library.encode("utf-8")
+
     return MeshFileGeometry(
         format=fmt,
         data=data,
         resources=resources,
     )
+
+
+def _extract_obj_mtl_name(obj_text: str | None) -> str | None:
+    """Extract the material library filename referenced by an OBJ.
+
+    Args:
+        obj_text: OBJ file contents as text
+
+    Returns:
+        The filename from the first ``mtllib`` directive, or None if absent.
+    """
+    if not obj_text:
+        return None
+
+    for line in obj_text.splitlines():
+        stripped = line.strip()
+        if not stripped.lower().startswith("mtllib"):
+            continue
+
+        parts = stripped.split(None, 1)
+        if len(parts) == 2:
+            filename = parts[1].strip()
+            if filename:
+                return filename
+
+    return None
 
 
 def _decode_data_uri(data_uri: str) -> bytes | None:

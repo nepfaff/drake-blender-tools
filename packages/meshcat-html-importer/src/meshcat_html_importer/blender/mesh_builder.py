@@ -67,7 +67,9 @@ def create_mesh_file_object(
         name: Optional name override
 
     Returns:
-        Tuple of (object, import_matrix). import_matrix is non-None for glTF.
+        Tuple of (object, import_matrix). For glTF files, import_matrix preserves
+        Blender's static import transform (axis conversion plus any transforms
+        embedded in the glTF nodes).
     """
     if node.geometry is None or not isinstance(node.geometry, MeshFileGeometry):
         return None, None
@@ -307,8 +309,8 @@ def _create_from_mesh_file(
     """Create mesh by importing embedded mesh file.
 
     Returns:
-        Tuple of (object, import_matrix) where import_matrix is the coordinate
-        system conversion matrix from the importer (e.g., glTF Y-up to Z-up).
+        Tuple of (object, import_matrix) where import_matrix is Blender's static
+        glTF import transform (axis conversion plus any embedded node transforms).
         For OBJ imports, import_matrix is None. Returns (None, None) on failure.
     """
 
@@ -334,15 +336,13 @@ def _create_from_mesh_file(
             new_objects = list(set(bpy.data.objects) - old_objects)
 
             if new_objects:
-                # Capture the import's coordinate conversion matrix before cleanup.
-                # The glTF importer applies a rotation to convert from glTF's
-                # coordinate system to Blender's. We need to preserve this when
-                # applying the meshcat world transform later.
-                import_matrix = _get_import_rotation_matrix(new_objects)
-
-                # Find the main mesh object and clean up extras
+                # Find the main mesh object and clean up extras. Capture the
+                # resulting world matrix after cleanup so we preserve the full
+                # static import transform, including embedded glTF node offsets.
                 main_obj = _select_main_object_and_cleanup(new_objects, name)
-                return main_obj, import_matrix
+                if main_obj is not None:
+                    _pack_images_for_object(main_obj)
+                    return main_obj, main_obj.matrix_world.copy()
 
         elif geom.format.lower() == "obj":
             mesh_file = temp_path / f"{name}.obj"
@@ -362,40 +362,53 @@ def _create_from_mesh_file(
             if new_objects:
                 # Find the main mesh object and clean up extras
                 main_obj = _select_main_object_and_cleanup(new_objects, name)
+                if main_obj is not None:
+                    _pack_images_for_object(main_obj)
                 return main_obj, None
 
     return None, None
 
 
-def _get_import_rotation_matrix(
-    objects: list[bpy.types.Object],
-) -> "mathutils.Matrix":
-    """Extract the coordinate conversion rotation from imported objects.
+def _pack_images_for_object(obj: bpy.types.Object) -> None:
+    """Pack image textures referenced by an imported object's materials.
 
-    The glTF importer applies a rotation to convert from glTF/Three.js coordinate
-    system to Blender's. This captures that rotation so it can be combined with
-    the meshcat world transform.
-
-    Args:
-        objects: List of newly imported objects
-
-    Returns:
-        The import rotation as a 4x4 matrix (translation zeroed, pure rotation)
+    Mesh imports use temporary files on disk. Pack any referenced images before
+    the temp directory is cleaned up so Blender keeps the texture data.
     """
-    import mathutils
+    images: set[bpy.types.Image] = set()
 
-    # Find a root object (no parent) - the importer's coordinate conversion
-    # is typically on the root object or the first mesh
-    for obj in objects:
-        if obj.parent is None:
-            mat = obj.matrix_world.copy()
-            # Zero out translation - we only want the rotation component
-            mat[0][3] = 0.0
-            mat[1][3] = 0.0
-            mat[2][3] = 0.0
-            return mat
+    if obj.data is None:
+        return
 
-    return mathutils.Matrix.Identity(4)
+    for material in obj.data.materials:
+        if material is None or material.node_tree is None:
+            continue
+
+        for node in material.node_tree.nodes:
+            image = getattr(node, "image", None)
+            if image is not None:
+                images.add(image)
+
+    for image in images:
+        _pack_image(image)
+
+
+def _pack_image(image: bpy.types.Image) -> None:
+    """Pack an imported image into the current Blender file if possible."""
+    image_path = bpy.path.abspath(image.filepath, library=image.library)
+    if image.packed_file or not image_path:
+        return
+
+    path = Path(image_path)
+    if not path.exists():
+        return
+
+    try:
+        if not image.has_data:
+            image.reload()
+        image.pack()
+    except RuntimeError as exc:
+        print(f"Warning: Failed to pack image {image.name}: {exc}")
 
 
 def _select_main_object_and_cleanup(

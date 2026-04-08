@@ -55,12 +55,18 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Install all packages with dev dependencies
 uv sync --all-extras
 
+# Install git hooks
+uv run pre-commit install
+
 # Run tests
 uv run pytest
 
 # Format and lint
 uv run ruff format .
 uv run ruff check --fix .
+
+# Run the same hooks as CI
+uv run pre-commit run --all-files
 ```
 
 ### Building the Blender Addon

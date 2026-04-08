@@ -190,6 +190,7 @@ class SceneGraph:
                     "type": "_meshfile_geometry",
                     "format": inner_obj.get("format"),
                     "data": inner_obj.get("data"),
+                    "mtl_library": inner_obj.get("mtl_library"),
                     "resources": inner_obj.get("resources", {}),
                 },
                 cas_assets=self._assets,
