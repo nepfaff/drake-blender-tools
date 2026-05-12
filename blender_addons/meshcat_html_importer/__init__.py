@@ -12,7 +12,7 @@ from . import operators
 bl_info = {
     "name": "Meshcat HTML Importer",
     "author": "Nicholas Pfaff",
-    "version": (0, 1, 2),
+    "version": (0, 1, 3),
     "blender": (5, 0, 0),  # Blender 5.0+ only
     "location": "File > Import > Meshcat Recording (.html, .zip, .meshcat)",
     "description": "Import meshcat recordings with geometry and animation",
