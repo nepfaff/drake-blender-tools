@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import mimetypes
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -25,11 +26,11 @@ class ResolvedAsset:
 class AssetResolver:
     """Resolves asset references from casAssets dictionary."""
 
-    def __init__(self, cas_assets: dict[str, str]):
+    def __init__(self, cas_assets: dict[str, str | bytes]):
         """Initialize with casAssets dictionary.
 
         Args:
-            cas_assets: Dictionary mapping hash -> data URI
+            cas_assets: Dictionary mapping hash -> data URI or raw bytes
         """
         self._assets = cas_assets
         self._cache: dict[str, ResolvedAsset] = {}
@@ -46,11 +47,19 @@ class AssetResolver:
         if key in self._cache:
             return self._cache[key]
 
-        data_uri = self._assets.get(key)
-        if not data_uri:
+        asset = self._assets.get(key)
+        if asset is None:
             return None
 
-        resolved = self._parse_data_uri(data_uri, key)
+        if isinstance(asset, bytes):
+            resolved = ResolvedAsset(
+                mime_type=_guess_mime_type(key),
+                data=asset,
+                hash=key,
+            )
+        else:
+            resolved = self._parse_data_uri(asset, key)
+
         if resolved:
             self._cache[key] = resolved
 
@@ -114,6 +123,12 @@ class AssetResolver:
     def get_all_keys(self) -> list[str]:
         """Get all available asset keys."""
         return list(self._assets.keys())
+
+
+def _guess_mime_type(key: str) -> str:
+    """Guess a MIME type for raw external StaticZip assets."""
+    mime_type, _ = mimetypes.guess_type(key)
+    return mime_type or "application/octet-binary"
 
 
 def extract_texture_uuid(material_data: dict[str, Any]) -> str | None:

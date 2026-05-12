@@ -15,17 +15,17 @@ sync-addon:
 	cp -r $(PKG_SRC)/blender $(ADDON_DIR)/blender_impl
 	cp -r $(PKG_SRC)/vendor/msgpack $(ADDON_DIR)/_msgpack
 	@# Convert absolute imports to relative imports
-	find $(ADDON_DIR)/parser -name '*.py' -exec sed -i 's/from meshcat_html_importer\.parser\./from ./g' {} +
-	find $(ADDON_DIR)/scene -name '*.py' -exec sed -i 's/from meshcat_html_importer\.scene\./from ./g' {} +
-	find $(ADDON_DIR)/animation -name '*.py' -exec sed -i 's/from meshcat_html_importer\.animation\./from ./g' {} +
-	find $(ADDON_DIR)/blender_impl -name '*.py' -exec sed -i 's/from meshcat_html_importer\.blender\./from ./g' {} +
+	find $(ADDON_DIR)/parser -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.parser\./from ./g' {} +
+	find $(ADDON_DIR)/scene -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.scene\./from ./g' {} +
+	find $(ADDON_DIR)/animation -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.animation\./from ./g' {} +
+	find $(ADDON_DIR)/blender_impl -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.blender\./from ./g' {} +
 	@# Fix cross-package imports (e.g., scene -> parser, blender_impl -> scene)
-	find $(ADDON_DIR) -name '*.py' -exec sed -i 's/from meshcat_html_importer\.parser/from ..parser/g' {} +
-	find $(ADDON_DIR) -name '*.py' -exec sed -i 's/from meshcat_html_importer\.scene/from ..scene/g' {} +
-	find $(ADDON_DIR) -name '*.py' -exec sed -i 's/from meshcat_html_importer\.animation/from ..animation/g' {} +
-	find $(ADDON_DIR) -name '*.py' -exec sed -i 's/from meshcat_html_importer\.blender/from ..blender_impl/g' {} +
+	find $(ADDON_DIR) -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.parser/from ..parser/g' {} +
+	find $(ADDON_DIR) -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.scene/from ..scene/g' {} +
+	find $(ADDON_DIR) -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.animation/from ..animation/g' {} +
+	find $(ADDON_DIR) -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.blender/from ..blender_impl/g' {} +
 	@# Fix msgpack vendor import
-	find $(ADDON_DIR)/parser -name '*.py' -exec sed -i 's/from meshcat_html_importer\.vendor import msgpack/from .. import _msgpack as msgpack/g' {} +
+	find $(ADDON_DIR)/parser -name '*.py' -exec perl -pi -e 's/from meshcat_html_importer\.vendor import msgpack/from .. import _msgpack as msgpack/g' {} +
 	@# Remove fallback 'import msgpack' lines (only in try/except blocks)
 	@echo "Done. Addon synced."
 

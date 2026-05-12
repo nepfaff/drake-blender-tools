@@ -149,6 +149,35 @@ class TestGeometry:
         invalid = MeshGeometry(positions=np.array([]))
         assert not invalid.validate()
 
+    def test_parse_gltf_meshfile_resolves_raw_cas_assets(self):
+        """Test glTF meshfiles can resolve raw StaticZip CAS assets."""
+        from meshcat_html_importer.scene.geometry import parse_geometry
+
+        data = {
+            "type": "_meshfile_geometry",
+            "format": "gltf",
+            "data": (
+                '{"asset":{"version":"2.0"},'
+                '"buffers":[{"uri":"cas-v1/buffer.bin","byteLength":4}],'
+                '"images":[{"uri":"cas-v1/texture.png"}]}'
+            ),
+        }
+
+        result = parse_geometry(
+            data,
+            cas_assets={
+                "cas-v1/buffer.bin": b"buff",
+                "cas-v1/texture.png": b"png",
+            },
+        )
+
+        assert result is not None
+        assert result.format == "gltf"
+        assert result.resources == {
+            "cas-v1/buffer.bin": b"buff",
+            "cas-v1/texture.png": b"png",
+        }
+
     def test_obj_meshfile_uses_mtl_library_resource(self):
         """Test OBJ meshfiles reconstruct the referenced MTL file."""
         from meshcat_html_importer.parser.command_types import Command

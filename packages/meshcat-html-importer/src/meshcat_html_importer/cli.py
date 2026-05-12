@@ -16,7 +16,7 @@ def main() -> int:
     parser.add_argument(
         "input",
         type=Path,
-        help="Input HTML file from meshcat recording",
+        help="Input HTML file or Drake Meshcat::StaticZip archive",
     )
     parser.add_argument(
         "-o",

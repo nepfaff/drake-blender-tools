@@ -3,6 +3,7 @@
 
 import base64
 import struct
+import zipfile
 
 import pytest
 
@@ -117,6 +118,56 @@ class TestHtmlExtractor:
         )
         assert "cas-v1/def456" in assets
         assert assets["cas-v1/def456"] == "data:image/png;base64,aW1hZ2U="
+
+    def test_load_external_cas_assets(self, tmp_path):
+        """Test loading unpacked StaticZip CAS assets next to an HTML file."""
+        from meshcat_html_importer.parser.html_extractor import load_external_cas_assets
+
+        html_path = tmp_path / "recording.html"
+        html_path.write_text("<html></html>", encoding="utf-8")
+        cas_dir = tmp_path / "cas-v1"
+        cas_dir.mkdir()
+        (cas_dir / "abc123").write_bytes(b"asset-bytes")
+
+        assets = load_external_cas_assets(html_path)
+
+        assert assets == {"cas-v1/abc123": b"asset-bytes"}
+
+    def test_parse_static_zip_recording(self, tmp_path):
+        """Test parsing Drake Meshcat::StaticZip recordings directly."""
+        from meshcat_html_importer.parser.html_extractor import parse_html_recording
+
+        test_data = b"\x81\xa4type\xa6delete"  # msgpack: {"type": "delete"}
+        b64_data = base64.b64encode(test_data).decode()
+        html = f'fetch("data:application/octet-binary;base64,{b64_data}")'
+
+        zip_path = tmp_path / "recording.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("recording/scene.html", html)
+            zf.writestr("recording/cas-v1/abc123", b"asset-bytes")
+
+        scene_data = parse_html_recording(zip_path)
+
+        assert len(scene_data["commands"]) == 1
+        assert scene_data["assets"] == {"cas-v1/abc123": b"asset-bytes"}
+
+    def test_parse_static_zip_recording_with_meshcat_suffix(self, tmp_path):
+        """Test parsing renamed StaticZip archives for Blender drag-and-drop."""
+        from meshcat_html_importer.parser.html_extractor import parse_html_recording
+
+        test_data = b"\x81\xa4type\xa6delete"  # msgpack: {"type": "delete"}
+        b64_data = base64.b64encode(test_data).decode()
+        html = f'fetch("data:application/octet-binary;base64,{b64_data}")'
+
+        recording_path = tmp_path / "recording.meshcat"
+        with zipfile.ZipFile(recording_path, "w") as zf:
+            zf.writestr("recording/scene.html", html)
+            zf.writestr("recording/cas-v1/abc123", b"asset-bytes")
+
+        scene_data = parse_html_recording(recording_path)
+
+        assert len(scene_data["commands"]) == 1
+        assert scene_data["assets"] == {"cas-v1/abc123": b"asset-bytes"}
 
 
 class TestCommandTypes:

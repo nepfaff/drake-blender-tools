@@ -13,12 +13,12 @@ from .parser import parse_html_recording
 
 
 class MESHCAT_FH_html(bpy.types.FileHandler):
-    """Meshcat HTML drag-and-drop file handler."""
+    """Meshcat recording drag-and-drop file handler."""
 
     bl_idname = "MESHCAT_FH_html"
-    bl_label = "Meshcat HTML"
+    bl_label = "Meshcat Recording"
     bl_import_operator = "import_scene.meshcat_html"
-    bl_file_extensions = ".html;.htm"
+    bl_file_extensions = ".html;.htm;.meshcat;.mcz"
 
     @classmethod
     def poll_drop(cls, context):
@@ -27,18 +27,21 @@ class MESHCAT_FH_html(bpy.types.FileHandler):
 
 
 class IMPORT_OT_meshcat_html(Operator, ImportHelper):
-    """Import a meshcat HTML recording."""
+    """Import a meshcat HTML or StaticZip recording."""
 
     bl_idname = "import_scene.meshcat_html"
-    bl_label = "Import Meshcat HTML"
+    bl_label = "Import Meshcat Recording"
     bl_options = {"REGISTER", "UNDO"}
 
     filename_ext = ".html"
-    filter_glob: StringProperty(default="*.html;*.htm", options={"HIDDEN"})
+    filter_glob: StringProperty(
+        default="*.html;*.htm;*.zip;*.meshcat;*.mcz",
+        options={"HIDDEN"},
+    )
 
     filepath: StringProperty(
         name="File Path",
-        description="Path to the meshcat HTML file",
+        description="Path to the meshcat HTML file or StaticZip archive",
         subtype="FILE_PATH",
         options={"SKIP_SAVE", "HIDDEN"},
     )
@@ -119,22 +122,24 @@ class IMPORT_OT_meshcat_html(Operator, ImportHelper):
             self.report({"ERROR"}, "No file selected")
             return {"CANCELLED"}
 
-        # Quick validation: check if file contains meshcat patterns
-        try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                content = f.read(1000)  # Read first 1KB for quick check
-                # Check for meshcat-specific patterns
-                has_meshcat = (
-                    "meshcat" in content.lower()
-                    or "MeshCat" in content
-                    or "meshcat-pane" in content
-                )
-                if not has_meshcat:
-                    self.report({"ERROR"}, "Not a valid meshcat HTML recording")
-                    return {"CANCELLED"}
-        except Exception as e:
-            self.report({"ERROR"}, f"Failed to read file: {str(e)}")
-            return {"CANCELLED"}
+        # Quick validation for text HTML recordings. Archive recordings are
+        # validated by the parser because the HTML lives inside the archive.
+        if not self.filepath.lower().endswith((".zip", ".meshcat", ".mcz")):
+            try:
+                with open(self.filepath, "r", encoding="utf-8") as f:
+                    content = f.read(1000)  # Read first 1KB for quick check
+                    # Check for meshcat-specific patterns
+                    has_meshcat = (
+                        "meshcat" in content.lower()
+                        or "MeshCat" in content
+                        or "meshcat-pane" in content
+                    )
+                    if not has_meshcat:
+                        self.report({"ERROR"}, "Not a valid meshcat recording")
+                        return {"CANCELLED"}
+            except Exception as e:
+                self.report({"ERROR"}, f"Failed to read file: {str(e)}")
+                return {"CANCELLED"}
 
         # Initialize progress indicator
         wm = context.window_manager

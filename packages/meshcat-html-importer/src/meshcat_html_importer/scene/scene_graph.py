@@ -96,17 +96,17 @@ class SceneNode:
 class SceneGraph:
     """Complete scene graph built from meshcat commands."""
 
-    def __init__(self, assets: dict[str, str] | None = None):
+    def __init__(self, assets: dict[str, str | bytes] | None = None):
         """Initialize scene graph.
 
         Args:
-            assets: Dictionary of CAS assets (hash -> data URI)
+            assets: Dictionary of CAS assets (hash -> data URI or raw bytes)
         """
         self.root = SceneNode(path="/", name="root")
         self._nodes: dict[str, SceneNode] = {"/": self.root}
         self._textures: dict[str, Any] = {}
         self._animation_fps: float = 30.0
-        self._assets: dict[str, str] = assets or {}
+        self._assets: dict[str, str | bytes] = assets or {}
 
     def process_commands(self, commands: list[Command]) -> None:
         """Process a list of commands to build the scene graph.

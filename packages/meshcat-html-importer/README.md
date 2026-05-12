@@ -4,11 +4,14 @@ Import meshcat HTML recordings into Blender.
 
 ## Overview
 
-This package parses meshcat HTML recordings (saved from the meshcat web viewer) and converts them to Blender scenes with full animation support.
+This package parses meshcat HTML recordings (saved from the meshcat web viewer)
+and Drake `Meshcat::StaticZip` archives, then converts them to Blender scenes
+with full animation support.
 
 ## Features
 
 - Parse msgpack-encoded commands from HTML recordings
+- Resolve external `cas-v1` assets from Drake `Meshcat::StaticZip` archives
 - Support for multiple geometry types:
   - `BufferGeometry` (custom meshes)
   - Primitives: `BoxGeometry`, `SphereGeometry`, `CylinderGeometry`
@@ -34,6 +37,8 @@ Requires the `bpy` package (Blender as a Python module):
 
 ```bash
 meshcat-html-import recording.html -o scene.blend
+meshcat-html-import recording.zip -o scene.blend
+meshcat-html-import recording.meshcat -o scene.blend
 ```
 
 ### Options
@@ -48,7 +53,11 @@ Install the `meshcat_html_importer` extension from `blender_addons/`:
 
 1. In Blender: Edit > Preferences > Get Extensions
 2. Install from disk: select `blender_addons/meshcat_html_importer/`
-3. Use: File > Import > Meshcat Recording (.html)
+3. Use: File > Import > Meshcat Recording (.html, .zip, .meshcat)
+
+For viewport drag-and-drop StaticZip imports, rename the archive from `.zip` to
+`.meshcat` first. Blender reserves dropped `.zip` files for extension
+installation.
 
 ### Python API
 

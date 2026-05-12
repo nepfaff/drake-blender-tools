@@ -20,10 +20,14 @@ All Blender videos on [SceneSmith](https://scenesmith.github.io/) were created w
 
 ### Usage
 
-1. Save your meshcat visualization as HTML
+1. Save your meshcat visualization as HTML, or use Drake's `Meshcat::StaticZip`
+   output
 2. Import into Blender using one of:
-   - **File > Import > Meshcat Recording (.html)**
+   - **File > Import > Meshcat Recording (.html, .zip, .meshcat)**
    - **Drag and drop** the `.html` file directly onto the Blender viewport
+   - For drag-and-drop StaticZip imports, rename the archive from `.zip` to
+     `.meshcat` first. Blender reserves `.zip` drag-and-drop for extension
+     installation.
 3. Configure import options and import
 
 ### Import Options
@@ -42,6 +46,7 @@ For headless or scripted workflows (requires the `bpy` package). If you've set u
 
 ```bash
 meshcat-html-import recording.html -o scene.blend
+meshcat-html-import recording.zip -o scene.blend
 ```
 
 ## Development

@@ -71,7 +71,7 @@ class MeshFileGeometry:
 
 def parse_geometry(
     geom_data: dict[str, Any],
-    cas_assets: dict[str, str] | None = None,
+    cas_assets: dict[str, str | bytes] | None = None,
 ) -> MeshGeometry | PrimitiveGeometry | MeshFileGeometry | None:
     """Parse geometry data from a meshcat object.
 
@@ -213,7 +213,7 @@ def _parse_plane_geometry(geom_data: dict[str, Any]) -> PrimitiveGeometry:
 
 def _parse_meshfile_geometry(
     geom_data: dict[str, Any],
-    cas_assets: dict[str, str] | None = None,
+    cas_assets: dict[str, str | bytes] | None = None,
 ) -> MeshFileGeometry | None:
     """Parse a _meshfile_geometry (embedded glTF/OBJ).
 
@@ -245,11 +245,10 @@ def _parse_meshfile_geometry(
                 uri = buffer.get("uri", "")
                 if uri.startswith(("cas-v1/", "cas-v1-")):
                     # Look up in CAS assets
-                    if uri in cas_assets:
-                        asset_data_uri = cas_assets[uri]
-                        # Parse data URI and extract binary data
-                        binary_data = _decode_data_uri(asset_data_uri)
-                        if binary_data:
+                    asset = cas_assets.get(uri)
+                    if asset is not None:
+                        binary_data = _decode_asset_data(asset)
+                        if binary_data is not None:
                             resources[uri] = binary_data
                             # Replace URI with the resource key for later resolution
                             buffer["uri"] = uri
@@ -259,10 +258,10 @@ def _parse_meshfile_geometry(
             for image in images:
                 uri = image.get("uri", "")
                 if uri.startswith(("cas-v1/", "cas-v1-")):
-                    if uri in cas_assets:
-                        asset_data_uri = cas_assets[uri]
-                        binary_data = _decode_data_uri(asset_data_uri)
-                        if binary_data:
+                    asset = cas_assets.get(uri)
+                    if asset is not None:
+                        binary_data = _decode_asset_data(asset)
+                        if binary_data is not None:
                             resources[uri] = binary_data
 
             # Re-serialize the glTF JSON (it may have been modified)
@@ -341,6 +340,13 @@ def _extract_obj_mtl_name(obj_text: str | None) -> str | None:
                 return filename
 
     return None
+
+
+def _decode_asset_data(asset: str | bytes) -> bytes | None:
+    """Decode a CAS asset from either raw bytes or a data URI string."""
+    if isinstance(asset, bytes):
+        return asset
+    return _decode_data_uri(asset)
 
 
 def _decode_data_uri(data_uri: str) -> bytes | None:
